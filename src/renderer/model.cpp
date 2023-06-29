@@ -46,9 +46,9 @@ Model::Model(const std::string filename) {
         }
     }
     std::cerr << "# v# " << nverts() << " f# " << nfaces() << " vt# " << tex_coord.size() << " vn# " << norms.size() << std::endl;
-    load_texture(filename, "_diffuse.tga", diffusemap);
-    load_texture(filename, "_nm_tangent.tga", normalmap);
-    load_texture(filename, "_spec.tga", specularmap);
+    //load_texture(filename, "_diffuse.tga", diffusemap);
+    //load_texture(filename, "_nm_tangent.tga", normalmap);
+    //load_texture(filename, "_spec.tga", specularmap);
 }
 
 int Model::nverts() const {
