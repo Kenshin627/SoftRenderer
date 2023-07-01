@@ -1,8 +1,10 @@
 #include <iostream>
 #include "tgaimage/tgaimage.h"
-#include "utils/Line.h"
 #include "renderer/model.h"
 #include "sdl2/include/SDL.h"
+
+#include "utils/Line.h"
+#include "utils/Triangle.h"
 
 void draw(TGAImage& image);
 
@@ -54,6 +56,8 @@ int main(int argc, char* argv[])
 
 void draw(TGAImage& image)
 {
+	#pragma region lINE
+	//---------------------------------------------- Bresenham' line 
 	//TGAImage image(100, 100, TGAImage::RGB);
 	//TGAColor red = TGAColor(255, 0, 0, 255);
 	//TGAColor green = TGAColor(0, 255, 0, 255);
@@ -69,7 +73,10 @@ void draw(TGAImage& image)
 	//DrawLine4(20, 20, 30, 80, image, red);
 	//image.flip_vertically();
 	//image.write_tga_file("output.tga");
-	uint32_t width = 1000;
+	//---------------------------------------------- Bresenham' line
+
+	//---------------------------------------------- line Mesh renderer
+	/*uint32_t width = 1000;
 	uint32_t height = 1000;
 	uint32_t halfW = image.width() / 2;
 	uint32_t halfH = image.height() / 2;
@@ -86,5 +93,22 @@ void draw(TGAImage& image)
 			DrawLine4(x0, y0, x1, y1, image, white);
 		}
 	}
-	image.flip_vertically();
+	image.flip_vertically();*/
+	//---------------------------------------------- line Mesh renderer
+	#pragma endregion
+
+	#pragma region TRIANGLE
+
+	vec2 t0[3] = { vec2{10, 70},   vec2{50, 160},  vec2{70, 80} };
+	vec2 t1[3] = { vec2{180, 50},  vec2{150, 1},   vec2{70, 180} };
+	vec2 t2[3] = { vec2{180, 150}, vec2{120, 160}, vec2{130, 180} };
+
+	TGAColor red = { 255, 0, 0, 255, 4 * 8 };
+	TGAColor blue = { 0, 0, 255, 255, 4 * 8 };
+	TGAColor green = { 0, 255, 0, 255, 4 * 8 };
+	Triangle(t0[0], t0[1], t0[2], image, red);
+	Triangle(t1[0], t1[1], t1[2], image, blue);
+	Triangle(t2[0], t2[1], t2[2], image, green);
+	#pragma endregion
+
 }
