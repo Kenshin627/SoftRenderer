@@ -74,16 +74,16 @@ void Model::load_texture(std::string filename, const std::string suffix, TGAImag
     std::cerr << "texture file " << texfile << " loading " << (img.read_tga_file(texfile.c_str()) ? "ok" : "failed") << std::endl;
 }
 
-vec3 Model::normal(const vec2& uvf) const
-{
-    TGAColor c = normalmap.get(uvf[0] * normalmap.width(), uvf[1] * normalmap.height());
-    return vec3{ (double)c[2],(double)c[1],(double)c[0] }*2. / 255. - vec3{1, 1, 1};
-}
+//vec3 Model::normal(const vec2& uvf)
+//{
+//    TGAColor c = normalmap.get(uvf[0] * normalmap.get_width(), uvf[1] * normalmap.get_height());
+//    return vec3{ (double)c[2],(double)c[1],(double)c[0] }*2. / 255. - vec3{1, 1, 1};
+//}
 
 vec2 Model::uv(const int iface, const int nthvert) const {
     return tex_coord[facet_tex[iface * 3 + nthvert]];
 }
 
-vec3 Model::normal(const int iface, const int nthvert) const {
-    return norms[facet_nrm[iface * 3 + nthvert]];
-}
+//vec3 Model::normal(const int iface, const int nthvert) {
+//    return norms[facet_nrm[iface * 3 + nthvert]];
+//}

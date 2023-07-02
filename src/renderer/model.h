@@ -18,8 +18,8 @@ public:
     Model(const std::string filename);
     int nverts() const;
     int nfaces() const;
-    vec3 normal(const int iface, const int nthvert) const; // per triangle corner normal vertex
-    vec3 normal(const vec2& uv) const;                     // fetch the normal vector from the normal map texture
+    //vec3 normal(const int iface, const int nthvert); // per triangle corner normal vertex
+    //vec3 normal(const vec2& uv);                     // fetch the normal vector from the normal map texture
     vec3 vert(const int i) const;
     vec3 vert(const int iface, const int nthvert) const;
     vec2 uv(const int iface, const int nthvert) const;
