@@ -6,13 +6,15 @@
 #include "utils/Line.h"
 #include "utils/Triangle.h"
 
+const int screenWidth = 1000;
+const int screenHeight = 1000;
+
 void draw(TGAImage& image);
 
 int main(int argc, char* argv[])
 {
-	SDL_Window* window;
-	int screenWidth = 1000;
-	int screenHeight = 1000;
+	/*SDL_Window* window;
+	
 
 	SDL_Renderer* renderer;
 	SDL_Texture* texture;
@@ -29,7 +31,7 @@ int main(int argc, char* argv[])
 	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, screenWidth, screenHeight);
 	
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 1);
-	/*while (!shouldClose)
+	while (!shouldClose)
 	{
 		SDL_Event event;
 		while(SDL_PollEvent(&event))
@@ -38,20 +40,25 @@ int main(int argc, char* argv[])
 			{
 				shouldClose = true;
 			}
-		}*/
-		SDL_RenderClear(renderer);
-		TGAImage image(screenWidth, screenHeight, TGAImage::RGBA);
+		}
+		SDL_RenderClear(renderer);*/
+		TGAImage image(screenWidth, screenHeight, TGAImage::RGB);
 		draw(image);
-		/*SDL_UpdateTexture(texture, nullptr, image.GetRaw(), screenWidth * 3);
+	/*	SDL_UpdateTexture(texture, nullptr, image.GetRaw(), screenWidth * 3);
 		SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-		SDL_RenderPresent(renderer);*/
-	/*}
+		SDL_RenderPresent(renderer);
+	}
 	SDL_DestroyTexture(texture);
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();*/
 	
 	return 0;
+}
+
+glm::vec3 viewport(glm::vec3& v, uint32_t width, uint32_t height)
+{
+	return { (int)((v.x + 1.0) * width / 2 + 0.5), (int)((v.y + 1.0) * height / 2 + 0.5), v.z};
 }
 
 void draw(TGAImage& image)
@@ -61,11 +68,10 @@ void draw(TGAImage& image)
 	TGAColor green = TGAColor(0, 255, 0, 255);
 	TGAColor blue = TGAColor(0, 0, 255, 255);
 	TGAColor white = { 255, 255, 255, 255 };
-	uint32_t width = image.get_width();
-	uint32_t height = image.get_height();
-	uint32_t halfW = width / 2;
-	uint32_t halfH = height / 2;
-	Model model{ "source/models/diablo/d3.obj" };
+
+	uint32_t halfW = screenWidth / 2;
+	uint32_t halfH = screenHeight / 2;
+	Model model{ "source/models/head/head.obj" };
 	#pragma endregion
 
 	#pragma region lINE
@@ -122,27 +128,32 @@ void draw(TGAImage& image)
 
 	#pragma region FACE SHADING
 	glm::vec3 worldCoords[3];
-	glm::vec2 screenCoords[3];
+	glm::vec3 screenCoords[3];
 	glm::vec3 lightDir{ 0.0, 0.0, -1.0 };
-	
+	float* zBuffer = new float[screenWidth * screenHeight];
+	for (int i = 0; i < screenWidth * screenHeight; i++)
+	{
+		zBuffer[i] = -std::numeric_limits<float>::max();
+	}
+
 	for (int i = 0; i < model.nfaces(); i++) {
 		for (int j = 0; j < 3; j++)
 		{
 			auto vertex = model.vert(i, j);
 			glm::vec3 pos = { vertex .x, vertex.y, vertex.z };
 			worldCoords[j] = pos;
-			screenCoords[j] = { (pos.x + 1) * halfW,(pos.y + 1) * halfH };
+			screenCoords[j] = viewport(pos, screenWidth, screenHeight);
 		}
 		glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
 		normal = glm::normalize(normal);
 		float intensity = glm::dot(normal, lightDir);
 		if (intensity > 0)
 		{
-			BaryCentricTriangle(screenCoords, image, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255));
+			BaryCentricTriangle(screenCoords, image, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer);
 		}
 	}
 	image.flip_vertically();
 	image.write_tga_file("output.tga");
+	delete[] zBuffer;
 	#pragma endregion
-
 }

@@ -68,14 +68,14 @@ void SweepLine(glm::vec2& v0, glm::vec2& v1, glm::vec2& v2, TGAImage& image, TGA
 	}
 }
 
-glm::vec3 BaryCentric(glm::vec2* vertices, glm::vec2& p)
+glm::vec3 BaryCentric(glm::vec3* vertices, glm::vec3& p)
 {	
-	glm::vec2 v0 = vertices[0];
-	glm::vec2 v1 = vertices[1];
-	glm::vec2 v2 = vertices[2];
-	glm::vec2 AB = v1 - v0;
-	glm::vec2 AC = v2 - v0;
-	glm::vec2 PA = v0 -  p  ;
+	glm::vec3 v0 = vertices[0];
+	glm::vec3 v1 = vertices[1];
+	glm::vec3 v2 = vertices[2];
+	glm::vec3 AB = v1 - v0;
+	glm::vec3 AC = v2 - v0;
+	glm::vec3 PA = v0 -  p  ;
 	glm::vec3 A1 = glm::vec3{ AB.x, AC.x, PA.x };
 	glm::vec3 A2 = glm::vec3{ AB.y, AC.y, PA.y };
 	glm::vec3 uv1 = cross(A1, A2);
@@ -83,51 +83,53 @@ glm::vec3 BaryCentric(glm::vec2* vertices, glm::vec2& p)
 	{
 		return { -1, 1, 1 };
 	}
-
 	return { 1.0 - (uv1.x + uv1.y) / uv1.z, uv1.y / uv1.z, uv1.x / uv1.z };
 }
 
-BoundingBox GetBoundingBox(glm::vec2* vertices, glm::vec2 min, glm::vec2 max)
+BoundingBox GetBoundingBox(glm::vec3* vertices, glm::vec2 min, glm::vec2 max)
 {
 	BoundingBox bbox;
 	bbox.min = max;
 	bbox.max = min;
 	for (uint32_t i = 0; i < 3; i++)
 	{
-		bbox.min.x = std::min(bbox.min.x, vertices[i].x);
-		bbox.min.y = std::min(bbox.min.y, vertices[i].y);
+		bbox.min.x = std::max(min.x, std::min(bbox.min.x, vertices[i].x));
+		bbox.min.y = std::max(min.y, std::min(bbox.min.y, vertices[i].y));
 
-		bbox.max.x = std::max(bbox.max.x, vertices[i].x);
-		bbox.max.y = std::max(bbox.max.y, vertices[i].y);
+		bbox.max.x = std::min(max.x, std::max(bbox.max.x, vertices[i].x));
+		bbox.max.y = std::min(max.y, std::max(bbox.max.y, vertices[i].y));
 	}
-
-	bbox.min.x = std::max(min.x, bbox.min.x);
-	bbox.min.y = std::max(min.y, bbox.min.y);
-
-	bbox.max.x = std::min(max.x, bbox.max.x);
-	bbox.max.y = std::min(max.y, bbox.max.y);
 
 	return bbox;
 }
 
-void BaryCentricTriangle(glm::vec2* vertices, TGAImage& image, const TGAColor& color)
+void BaryCentricTriangle(glm::vec3* vertices, TGAImage& image, const TGAColor& color, float* zBuffer)
 {
 	//1: 获取包围盒
 	BoundingBox bbox = GetBoundingBox(vertices, { 0, 0 }, { image.get_width() - 1.0, image.get_height() - 1.0 });
 
 	//2: 遍历包围盒获取当前像素点的重心坐标
-	for (uint32_t x = bbox.min.x; x <= bbox.max.x; x++)
+	glm::vec3 p;
+	for (p.x = bbox.min.x; p.x<= bbox.max.x; p.x++)
 	{
-		for (uint32_t y = bbox.min.y; y <= bbox.max.y; y++) 
+		for (p.y = bbox.min.y; p.y<= bbox.max.y; p.y++) 
 		{
-			glm::vec2 p{ x, y };
 			glm::vec3 uvs = BaryCentric(vertices, p);
 			//3:判断是否在三角形内,如果在三角形内,计算像素颜色
 			if (uvs.x < 0 || uvs.y < 0 || uvs.z < 0)
 			{
 				continue;
 			}
-			image.set(x, y, color);
+			p.z = 0;
+			p.z += vertices[0].z * uvs.x;
+			p.z += vertices[1].z * uvs.y;
+			p.z += vertices[2].z * uvs.z;
+			uint32_t bufferIndex = (int)(p.x + image.get_width() * p.y);
+			if (p.z > zBuffer[bufferIndex])
+			{
+				zBuffer[bufferIndex] = p.z;
+				image.set(p.x, p.y, color);
+			}
 		}
 	}
 }
