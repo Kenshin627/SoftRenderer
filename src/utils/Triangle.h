@@ -16,4 +16,4 @@ void SweepLine(glm::vec2& v0, glm::vec2& v1, glm::vec2& v2, TGAImage& image, TGA
 
 BoundingBox GetBoundingBox(glm::vec3* vertices, glm::vec2 min, glm::vec2 max);
 
-void BaryCentricTriangle(glm::vec3* vertices, TGAImage& image, const TGAColor& color, double* zBuffer);
+void BaryCentricTriangle(glm::vec3* vertices, TGAImage& image, TGAImage& depthBuffer, const TGAColor& color, double* zBuffer);

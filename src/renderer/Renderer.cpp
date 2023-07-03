@@ -6,6 +6,7 @@
 Renderer::Renderer(uint32_t width, uint32_t height)
 {
 	frameBuffer = TGAImage(width, height, TGAImage::RGB);
+	depthBuffer = TGAImage(width, height, TGAImage::GRAYSCALE);
 	zBuffer = new double[width * height];
 	screenwidth = width;
 	screenheight = height;
@@ -15,19 +16,19 @@ Renderer::Renderer(uint32_t width, uint32_t height)
 	models.emplace_back("source/models/head/head.obj");
 }
 
-void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up)
+void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
 {
-	camera = Camera(eye, center, up);
+	camera = Camera(eye, center, up, fov, aspectRatio, near, far);
 }
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
 	viewport =
 	{
-		{ width / 2, 0, 0, width / 2 + x },
-		{ 0, height / 2, 0, height / 2 + y },
+		{ width / 2, 0, 0, 0 },
+		{ 0, height / 2, 0, 0 },
 		{ 0, 0, 1, 0 },
-		{ 0, 0, 0, 1 },
+		{ width / 2 + x, height / 2 + y, 0, 1 },
 	};
 }
 
@@ -106,25 +107,29 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 				auto vertex = model.vert(i, j);
 				glm::vec3 pos = { vertex.x, vertex.y, vertex.z };
 				worldCoords[j] = pos;
-				screenCoords[j] = { (int)((pos.x + 1.0) * halfWidth),(int)((pos.y + 1.0) * halfHeight), pos.z };
+				glm::vec4 transPos = viewport * camera.GetProjection() * camera.GetView() * glm::vec4(pos.x, pos.y, pos.z, 1.0);
+				screenCoords[j] = { (int)(transPos.x / transPos.w), (int)(transPos.y / transPos.w), (int)(transPos.z / transPos.w) };
 			}
 			glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
 			normal = glm::normalize(normal);
 			float intensity = glm::dot(normal, lightDir);
 			if (intensity > 0)
 			{
-				BaryCentricTriangle(screenCoords, frameBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer);
+				BaryCentricTriangle(screenCoords, frameBuffer, depthBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer);
 			}
 		}
 	}
 	frameBuffer.flip_vertically();
-	frameBuffer.write_tga_file("output.tga");
+	depthBuffer.flip_vertically();
+	frameBuffer.write_tga_file("color.tga");
+	depthBuffer.write_tga_file("depth.tga");
 	#pragma endregion
 }
 
 void Renderer::Clear()
 {
 	frameBuffer.clear();
+	depthBuffer.clear();
 	for (uint32_t i = 0; i < screenwidth * screenheight; i++)
 	{
 		zBuffer[i] = -std::numeric_limits<double>::max();

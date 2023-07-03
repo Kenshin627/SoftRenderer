@@ -5,7 +5,9 @@ class Camera
 {
 public:
 	Camera() = default;
-	Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up);
+	Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far);
+	const glm::mat4& GetView() const { return view; }
+	const glm::mat4& GetProjection() const { return projection; }
 	~Camera() = default;
 	void Update();
 private:

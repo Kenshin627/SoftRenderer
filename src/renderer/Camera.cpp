@@ -1,7 +1,7 @@
 #include "Camera.h"
 #include <glm/gtc/matrix_transform.hpp>
 
-Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up)
+Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
 {
 	//Rotation
 	glm::vec3 z = eye - center;
@@ -12,30 +12,12 @@ Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& u
 	y = glm::normalize(y);
 
 	/*
-	 * |               |
-	 * |               |
-	 * |  X÷· Y÷·  Z÷·  |
-	 * |               |
+	 * |                |
+	 * |   X÷·          |
+	 * |   Y÷·          |
+	 * |   Z÷·          |
 	 */
 	glm::mat4 rotation =
-	{
-		{ x.x, y.x, z.x, 0 },
-		{ x.y, y.y, z.y, 0 },
-		{ x.z, y.z, z.z, 0 },
-		{ 0  ,   0,   0, 1 }
-	};
-
-	//Translation
-	glm::mat4 translation =
-	{
-		{ 1, 0, 0, eye.x },
-		{ 0, 1, 0, eye.y },
-		{ 0, 0, 1, eye.z },
-		{ 0, 0, 0,     1 }
-	};
-	
-	//view = glm::inverse(translation * rotation) = glm::inverse(rotation) * glm::inverse(translation) = glm::transpose(rotation) * glm::inverse(translation);
-	glm::mat4 rotationInvert = 
 	{
 		{ x.x, x.y, x.z, 0 },
 		{ y.x, y.y, y.z, 0 },
@@ -43,21 +25,34 @@ Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& u
 		{ 0  ,   0,   0, 1 }
 	};
 
-	glm::mat4 translationInvert =
+	//Translation
+	glm::mat4 translation =
 	{
-		{ 1, 0, 0, -eye.x },
-		{ 0, 1, 0, -eye.y },
-		{ 0, 0, 1, -eye.z },
-		{ 0, 0, 0,     1 }
+		{ 1,         0,     0, 0 },
+		{ 0,         1,     0, 0 },
+		{ 0,         0,     1, 0 },
+		{ eye.x, eye.y, eye.z, 1 }
+	};
+	
+	//view = glm::inverse(translation * rotation) = glm::inverse(rotation) * glm::inverse(translation) = glm::transpose(rotation) * glm::inverse(translation);
+	glm::mat4 rotationInvert = 
+	{
+		{ x.x, y.x, z.x, 0 },
+		{ x.y, y.y, z.y, 0 },
+		{ x.z, y.z, z.z, 0 },
+		{ 0  ,   0,   0, 1 }
 	};
 
-	view = 
+	glm::mat4 translationInvert =
 	{
-		{ x.x, x.y, x.z, -eye.x },
-		{ y.x, y.y, y.z, -eye.y },
-		{ z.x, z.y, z.z, -eye.z },
-		{ 0  ,   0,   0,      1 }
+		{ 1, 0, 0, 0 },
+		{ 0, 1, 0, 0 },
+		{ 0, 0, 1, 0 },
+		{ -eye.x, -eye.y, -eye.z, 1 }
 	};
+
+	view = rotationInvert * translationInvert;
+	projection = glm::perspective(fov, aspectRatio, near, far);
 }
 
 void Camera::Update()
