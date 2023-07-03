@@ -133,6 +133,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\renderer\Camera.cpp" />
     <ClCompile Include="src\renderer\math.cpp" />
     <ClCompile Include="src\renderer\model.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp" />
@@ -141,6 +142,7 @@
     <ClCompile Include="vendor\tgaimage\tgaimage.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\renderer\Camera.h" />
     <ClInclude Include="src\renderer\math.h" />
     <ClInclude Include="src\renderer\model.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
