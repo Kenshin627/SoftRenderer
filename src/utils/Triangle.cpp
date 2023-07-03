@@ -133,7 +133,8 @@ void BaryCentricTriangle(glm::vec3* vertices, TGAImage& image, TGAImage& depthBu
 			{
 				zBuffer[bufferIndex] = p.z;
 				image.set(p.x, p.y, color);
-				depthBuffer.set(p.x, p.y, TGAColor(p.z, p.z, p.z, 255));
+				float depth = (p.z + 1.0) / 2.0 * 255;
+				depthBuffer.set(p.x, p.y, TGAColor(depth, depth, depth, 255));
 			}
 		}
 	}
