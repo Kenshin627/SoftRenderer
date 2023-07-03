@@ -2,18 +2,17 @@
 #include "tgaimage/tgaimage.h"
 #include "renderer/model.h"
 #include "sdl2/include/SDL.h"
-
 #include "utils/Line.h"
 #include "utils/Triangle.h"
 
-void draw(TGAImage& image);
+constexpr int SCREEN_WIDTH = 1000;
+constexpr int SCREEN_HEIGHT = 1000;
+
+void draw(TGAImage& image, double* zBuffer);
 
 int main(int argc, char* argv[])
 {
 	SDL_Window* window;
-	int screenWidth = 1000;
-	int screenHeight = 1000;
-
 	SDL_Renderer* renderer;
 	SDL_Texture* texture;
 
@@ -24,11 +23,14 @@ int main(int argc, char* argv[])
 		std::cout << "sdl init failed!" << std::endl;
 	}
 
-	window = SDL_CreateWindow("SoftRenderer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth, screenHeight, 0);
+	window = SDL_CreateWindow("SoftRenderer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
 	renderer = SDL_CreateRenderer(window, -1, 0);
-	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, screenWidth, screenHeight);
+	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
 	
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 1);
+
+	TGAImage frameBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, TGAImage::RGB);
+	double* zBuffer = new double[SCREEN_WIDTH * SCREEN_HEIGHT];
 	/*while (!shouldClose)
 	{
 		SDL_Event event;
@@ -40,8 +42,13 @@ int main(int argc, char* argv[])
 			}
 		}*/
 		SDL_RenderClear(renderer);
-		TGAImage image(screenWidth, screenHeight, TGAImage::RGBA);
-		draw(image);
+		frameBuffer.clear();
+		//TODO:ÖØÖÃzBuffer
+		for (uint32_t i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++)
+		{
+			zBuffer[i] = -std::numeric_limits<double>::max();
+		}
+		draw(frameBuffer, zBuffer);
 		/*SDL_UpdateTexture(texture, nullptr, image.GetRaw(), screenWidth * 3);
 		SDL_RenderCopy(renderer, texture, nullptr, nullptr);
 		SDL_RenderPresent(renderer);*/
@@ -54,18 +61,16 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-void draw(TGAImage& image)
+void draw(TGAImage& image, double* zBuffer)
 {
 	#pragma region INIT
 	TGAColor red = TGAColor(255, 0, 0, 255);
 	TGAColor green = TGAColor(0, 255, 0, 255);
 	TGAColor blue = TGAColor(0, 0, 255, 255);
 	TGAColor white = { 255, 255, 255, 255 };
-	uint32_t width = image.get_width();
-	uint32_t height = image.get_height();
-	uint32_t halfW = width / 2;
-	uint32_t halfH = height / 2;
-	Model model{ "source/models/diablo/d3.obj" };
+	uint32_t halfW = SCREEN_WIDTH / 2;
+	uint32_t halfH = SCREEN_HEIGHT / 2;
+	Model model{ "source/models/head/head.obj" };
 	#pragma endregion
 
 	#pragma region lINE
@@ -122,7 +127,7 @@ void draw(TGAImage& image)
 
 	#pragma region FACE SHADING
 	glm::vec3 worldCoords[3];
-	glm::vec2 screenCoords[3];
+	glm::vec3 screenCoords[3];
 	glm::vec3 lightDir{ 0.0, 0.0, -1.0 };
 	
 	for (int i = 0; i < model.nfaces(); i++) {
@@ -131,18 +136,17 @@ void draw(TGAImage& image)
 			auto vertex = model.vert(i, j);
 			glm::vec3 pos = { vertex .x, vertex.y, vertex.z };
 			worldCoords[j] = pos;
-			screenCoords[j] = { (pos.x + 1) * halfW,(pos.y + 1) * halfH };
+			screenCoords[j] = { (int)((pos.x + 1.0) * halfW),(int)((pos.y + 1.0) * halfH), pos.z};
 		}
 		glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
 		normal = glm::normalize(normal);
 		float intensity = glm::dot(normal, lightDir);
 		if (intensity > 0)
 		{
-			BaryCentricTriangle(screenCoords, image, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255));
+			BaryCentricTriangle(screenCoords, image, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer);
 		}
 	}
 	image.flip_vertically();
 	image.write_tga_file("output.tga");
 	#pragma endregion
-
 }
