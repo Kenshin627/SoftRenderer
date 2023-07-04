@@ -95,7 +95,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	
 	#pragma region FACE SHADING
 	glm::vec3 worldCoords[3];
-	glm::vec3 screenCoords[3];
+	glm::vec4 clipCoords[3];
 	glm::vec3 lightDir{ 0.0, 0.0, -1.0 };
 
 	for (uint32_t i = 0; i < models.size(); i++)
@@ -107,15 +107,14 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 				auto vertex = model.vert(i, j);
 				glm::vec3 pos = { vertex.x, vertex.y, vertex.z };
 				worldCoords[j] = pos;
-				glm::vec4 transPos = viewport * camera.GetProjection() * camera.GetView() * glm::vec4(pos.x, pos.y, pos.z, 1.0);
-				screenCoords[j] = { (int)(transPos.x / transPos.w), (int)(transPos.y / transPos.w), (int)(transPos.z / transPos.w) };
+				clipCoords[j] = camera.GetProjection() * camera.GetView() * glm::vec4(pos.x, pos.y, pos.z, 1.0);
 			}
 			glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
 			normal = glm::normalize(normal);
 			float intensity = glm::dot(normal, lightDir);
 			if (intensity > 0)
 			{
-				BaryCentricTriangle(screenCoords, frameBuffer, depthBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer);
+				BaryCentricTriangle(clipCoords, frameBuffer, depthBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer, viewport);
 			}
 		}
 	}

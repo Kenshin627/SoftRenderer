@@ -68,14 +68,14 @@ void SweepLine(glm::vec2& v0, glm::vec2& v1, glm::vec2& v2, TGAImage& image, TGA
 	}
 }
 
-glm::vec3 BaryCentric(glm::vec3* vertices, glm::vec3& p)
+glm::vec3 BaryCentric(glm::vec2* vertices, glm::vec2& p)
 {	
-	glm::vec3 v0 = vertices[0];
-	glm::vec3 v1 = vertices[1];
-	glm::vec3 v2 = vertices[2];
-	glm::vec3 AB = v1 - v0;
-	glm::vec3 AC = v2 - v0;
-	glm::vec3 PA = v0 -  p;
+	/*glm::vec2 v0 = vertices[0];
+	glm::vec2 v1 = vertices[1];
+	glm::vec2 v2 = vertices[2];
+	glm::vec2 AB = v1 - v0;
+	glm::vec2 AC = v2 - v0;
+	glm::vec2 PA = v0 -  p;
 	glm::vec3 A1 = glm::vec3{ AB.x, AC.x, PA.x };
 	glm::vec3 A2 = glm::vec3{ AB.y, AC.y, PA.y };
 	glm::vec3 uv1 = cross(A1, A2);
@@ -84,10 +84,30 @@ glm::vec3 BaryCentric(glm::vec3* vertices, glm::vec3& p)
 		return { -1, 1, 1 };
 	}
 
-	return { 1.0 - (uv1.x + uv1.y) / uv1.z, uv1.y / uv1.z, uv1.x / uv1.z };
+	return { 1.0 - (uv1.x + uv1.y) / uv1.z, uv1.y / uv1.z, uv1.x / uv1.z };*/
+	glm::vec2 AB = vertices[1] - vertices[0];
+	glm::vec2 AC = vertices[2] - vertices[0];
+	glm::vec2 AP = p           - vertices[0];
+
+	glm::mat2 triangleMat =
+	{
+		{ AB.x, AB.y },
+		{ AC.x, AC.y }
+	};
+	if (glm::determinant(triangleMat) <= 0)
+	{
+		return { -1, 1, 1 };
+	}
+	else
+	{
+		glm::vec2 bc = glm::inverse(triangleMat) * AP;
+		float a = 1 - bc.x - bc.y;
+		return { a, bc.x, bc.y };
+	}
+	
 }
 
-BoundingBox GetBoundingBox(glm::vec3* vertices, glm::vec2 min, glm::vec2 max)
+BoundingBox GetBoundingBox(glm::vec2* vertices, glm::vec2 min, glm::vec2 max)
 {
 	BoundingBox bbox;
 	bbox.min = max;
@@ -103,37 +123,37 @@ BoundingBox GetBoundingBox(glm::vec3* vertices, glm::vec2 min, glm::vec2 max)
 	return bbox;
 }
 
-void BaryCentricTriangle(glm::vec3* vertices, TGAImage& image, TGAImage& depthBuffer, const TGAColor& color, double* zBuffer)
+void BaryCentricTriangle(glm::vec4* clipVertices, TGAImage& image, TGAImage& depthBuffer, const TGAColor& color, double* zBuffer, const glm::mat4& viewport)
 {
+	glm::vec4 beforeDevision[3] = { viewport * clipVertices[0], viewport * clipVertices[0], viewport * clipVertices[0]};
+	glm::vec2 afterDevision[3] = { beforeDevision[0] / beforeDevision[0].w, beforeDevision[1] / beforeDevision[1].w,beforeDevision[2] / beforeDevision[2].w };
 	int width = image.get_width();
 	int height = image.get_height();
 	//1: 获取包围盒
-	BoundingBox bbox = GetBoundingBox(vertices, { 0, 0 }, { width - 1.0, height - 1.0 });
+	BoundingBox bbox = GetBoundingBox(afterDevision, { 0, 0 }, { width - 1.0, height - 1.0 });
 
-	glm::vec3 p;
 	//2: 遍历包围盒获取当前像素点的重心坐标
-	for (p.x = bbox.min.x; p.x<= bbox.max.x; p.x++)
+	for (uint32_t x = bbox.min.x; x<= bbox.max.x; x++)
 	{
-		for (p.y = bbox.min.y; p.y<= bbox.max.y; p.y++) 
+		for (uint32_t y = bbox.min.y; y<= bbox.max.y; y++) 
 		{
-			p.z = 0;
-			glm::vec3 bc = BaryCentric(vertices, p);
+			glm::vec2 p{x, y};
+			glm::vec3 bc_screen = BaryCentric(afterDevision, p);
+			glm::vec3 bc_clip = { bc_screen.x / beforeDevision[0][3], bc_screen.y / beforeDevision[1][3], bc_screen.x / beforeDevision[2][3] };
+			bc_clip = bc_clip / (bc_clip.x + bc_clip.y + bc_clip.z);
 			//3:判断是否在三角形内,如果在三角形内,计算像素颜色
-			if (bc.x < 0 || bc.y < 0 || bc.z < 0)
+			if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
 			{
 				continue;
 			}
 			//4:判断zbuffer
-			for (uint32_t i = 0; i < 3; i++)
-			{
-				p.z += vertices[i].z * bc[i];
-			}
+			float zBufferValue = glm::dot(glm::vec3(clipVertices[0].z, clipVertices[1].z, clipVertices[2].z), bc_clip);
 			int bufferIndex = (int)(p.x + p.y * width);
-			if (p.z > zBuffer[bufferIndex])
+			if (zBufferValue > zBuffer[bufferIndex])
 			{
-				zBuffer[bufferIndex] = p.z;
+				zBuffer[bufferIndex] = zBufferValue;
 				image.set(p.x, p.y, color);
-				float depth = (p.z + 1.0) / 2.0 * 255;
+				float depth = (zBufferValue + 1.0) / 2.0 * 255;
 				depthBuffer.set(p.x, p.y, TGAColor(depth, depth, depth, 255));
 			}
 		}

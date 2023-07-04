@@ -11,7 +11,7 @@ int main(int argc, char* argv[])
 	SDL_Renderer* sdlRenderer;
 	SDL_Texture* texture;
 	Renderer renderer(SCREEN_WIDTH, SCREEN_HEIGHT);
-	renderer.InitCamera({ 2, 2, 4 }, { 0,0,0 }, { 0,1,0 }, 3.14159265358 / 4.0, 1, 0.01, 100.0);
+	renderer.InitCamera({ 2, 2, 4 }, { 0,0,0 }, { 0,1,0 }, 3.14159265358 / 4.0, 1, -1, 1);
 	renderer.Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	bool shouldClose = false;
 	int suceess = SDL_Init(SDL_INIT_VIDEO);
