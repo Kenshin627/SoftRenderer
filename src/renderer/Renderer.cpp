@@ -1,13 +1,13 @@
 #include "Renderer.h"
 #include "model.h"
 #include "../utils/Line.h"
-#include "../utils/Triangle.h"
+
 
 Renderer::Renderer(uint32_t width, uint32_t height)
 {
 	frameBuffer = TGAImage(width, height, TGAImage::RGB);
 	depthBuffer = TGAImage(width, height, TGAImage::GRAYSCALE);
-	zBuffer = new double[width * height];
+	zBuffer = new float[width * height];
 	screenwidth = width;
 	screenheight = height;
 	pixelCount = width * height;
@@ -32,7 +32,7 @@ void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 	};
 }
 
-void Renderer::Draw()
+void Renderer::Draw(SDL_Renderer* renderer)
 {
 	#pragma region INIT
 	TGAColor red = TGAColor(255, 0, 0, 255);
@@ -114,7 +114,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 			float intensity = glm::dot(normal, lightDir);
 			if (intensity > 0)
 			{
-				BaryCentricTriangle(clipCoords, frameBuffer, depthBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer, viewport);
+				BaryCentricTriangle(clipCoords, frameBuffer, depthBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer, viewport, renderer);
 			}
 		}
 	}
@@ -131,7 +131,7 @@ void Renderer::Clear()
 	depthBuffer.clear();
 	for (uint32_t i = 0; i < screenwidth * screenheight; i++)
 	{
-		zBuffer[i] = -std::numeric_limits<double>::max();
+		zBuffer[i] = std::numeric_limits<double>::max();
 	}
 }
 

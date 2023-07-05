@@ -4,6 +4,7 @@
 #include <tgaimage/tgaimage.h>
 #include <vector>
 #include "model.h"
+#include "../utils/Triangle.h"
 
 class Renderer
 {
@@ -13,14 +14,14 @@ public:
 	void InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far);
 	void Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	Camera& GetCamera() { return camera; }
-	void Draw();
+	void Draw(SDL_Renderer* renderer);
 	void Clear();
 private:
 	Camera camera;
 	glm::mat4 viewport;
 	TGAImage frameBuffer;
 	TGAImage depthBuffer;
-	double* zBuffer;
+	float* zBuffer;
 	uint32_t screenwidth;
 	uint32_t screenheight;
 	uint32_t pixelCount;
