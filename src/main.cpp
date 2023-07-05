@@ -1,16 +1,16 @@
 #include <iostream>
 #include "tgaimage/tgaimage.h"
-//#include "sdl2/include/SDL.h"
 #include "renderer/Renderer.h"
 
 int main(int argc, char* argv[])
-{
-	constexpr uint32_t SCREEN_WIDTH = 1000;
+{	
 	constexpr uint32_t SCREEN_HEIGHT = 1000;
+	constexpr uint32_t ASPECT = 16.0 / 9.0;
+	constexpr uint32_t SCREEN_WIDTH = SCREEN_HEIGHT * ASPECT;
 	SDL_Window* window;
 	SDL_Renderer* sdlRenderer;
 	Renderer renderer(SCREEN_WIDTH, SCREEN_HEIGHT);
-	renderer.InitCamera({ 1, 0, 3 }, { 0,0,0 }, { 0,1,0 }, 3.14159265358 / 4.0, 1, 0.01, 100.0);
+	renderer.InitCamera({ 3, 0, 5 }, { 0,0,0 }, { 0,1,0 }, 3.14159265358 / 4.0, ASPECT, 0.01, 10.0);
 	renderer.Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	bool shouldClose = false;
 	int suceess = SDL_Init(SDL_INIT_VIDEO);

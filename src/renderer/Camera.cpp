@@ -50,9 +50,39 @@ Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& u
 		{ 0, 0, 1, 0 },
 		{ -eye.x, -eye.y, -eye.z, 1 }
 	};
-
+	
 	view = rotationInvert * translationInvert;
-	projection = glm::perspective(fov, aspectRatio, near, far);
+	//projection = glm::perspective(fov, aspectRatio, near, far);
+	//1:¼·Ñ¹±ä»»
+	glm::mat4 extrustionFrustum =
+	{
+		{ near, 0, 0, 0 },
+		{ 0, near, 0, 0 },
+		{ 0, 0, near + far, 1 },
+		{ 0, 0, -near * far, 0 }
+	};
+	//2.Æ½ÒÆ£º
+	glm::mat4 translationFrustum =
+	{
+		{1, 0, 0, 0 },
+		{ 0, 1, 0, 0 },
+		{ 0, 0, 1, 0 },
+		{ 0, 0, (near + far) / 2.0f, 1 }
+	};
+	//3.Ëõ·Å£º
+	float halfH = tan(fov / 2.0) * near;
+	float halfW = halfH * aspectRatio;
+
+	glm::mat4 scaleFrustum =
+	{
+		{ 1.0 / halfW, 0, 0, 0 },
+		{ 0, 1.0 / halfH, 0, 0 },
+		{ 0, 0, (far - near) / 2.0f, 0.0 },
+		{ 0, 0, 0, 1 }
+	};
+	projection = scaleFrustum * translationFrustum * extrustionFrustum;
+	//projection = glm::perspective(fov, aspectRatio, near, far);
+	glm::mat4 pro2 = glm::perspective(fov, aspectRatio, near, far);
 }
 
 void Camera::Update()
