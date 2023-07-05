@@ -80,9 +80,9 @@ Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& u
 		{ 0, 0, (far - near) / 2.0f, 0.0 },
 		{ 0, 0, 0, 1 }
 	};
-	projection = scaleFrustum * translationFrustum * extrustionFrustum;
-	//projection = glm::perspective(fov, aspectRatio, near, far);
-	glm::mat4 pro2 = glm::perspective(fov, aspectRatio, near, far);
+	//projection = scaleFrustum * translationFrustum * extrustionFrustum;
+	projection = glm::perspective(fov, aspectRatio, near, far);
+	//glm::mat4 pro2 = glm::perspective(fov, aspectRatio, near, far);
 }
 
 void Camera::Update()

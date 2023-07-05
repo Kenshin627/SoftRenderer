@@ -13,7 +13,7 @@ Renderer::Renderer(uint32_t width, uint32_t height)
 	pixelCount = width * height;
 	halfWidth = width / 2;
 	halfHeight = height / 2;
-	models.emplace_back("source/models/head/head.obj");
+	models.emplace_back("source/models/diablo/d3.obj");
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
