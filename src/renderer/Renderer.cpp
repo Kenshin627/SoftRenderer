@@ -3,17 +3,16 @@
 #include "../utils/Line.h"
 
 
-Renderer::Renderer(uint32_t width, uint32_t height)
+Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 {
-	frameBuffer = TGAImage(width, height, TGAImage::RGB);
-	depthBuffer = TGAImage(width, height, TGAImage::GRAYSCALE);
-	zBuffer = new float[width * height];
-	screenwidth = width;
-	screenheight = height;
-	pixelCount = width * height;
-	halfWidth = width / 2;
-	halfHeight = height / 2;
-	models.emplace_back("source/models/diablo/d3.obj");
+	presentDevice = device;
+	frameBuffer.colorAttachment = TGAImage(width, height, TGAImage::RGB);
+	frameBuffer.depthAttachment = TGAImage(width, height, TGAImage::GRAYSCALE);
+	frameBuffer.zBuffer = new float[width * height];
+	frameBuffer.width = width;
+	frameBuffer.height = height;
+	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
+	models.emplace_back("source/models/head/head.obj");
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
@@ -23,6 +22,7 @@ void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const g
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
+	//MATRIX[COL][ROW]
 	viewport =
 	{
 		{ width / 2, 0, 0, 0 },
@@ -32,7 +32,83 @@ void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 	};
 }
 
-void Renderer::Draw(SDL_Renderer* renderer)
+void Renderer::rasterize(glm::vec4* clipVertices, const TGAColor& color)
+{
+	glm::vec4 screenCoords[3] = { viewport * clipVertices[0], viewport * clipVertices[1], viewport * clipVertices[2] };
+	glm::vec4 screenCoordsCliped[3] = { screenCoords[0] / screenCoords[0].w, screenCoords[1] / screenCoords[1].w, screenCoords[2] / screenCoords[2].w };
+
+	BoundingBox bbox = GetBoundingBox(screenCoordsCliped);
+	for (uint32_t y = bbox.min.y; y <= bbox.max.y; y++)
+	{
+		for (uint32_t x = bbox.min.x; x <= bbox.max.x ; x++)
+		{
+			//定位像素位置，左下角->中心点
+			glm::vec2 p { (int)(x + 0.5), (int)(y + 0.5) };
+			glm::vec3 bc_screen = BaryCentric(screenCoordsCliped, p);
+			if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+			{
+				continue;
+			}
+
+			glm::vec3 bc_clip = { bc_screen.x / screenCoords[0].w, bc_screen.y / screenCoords[1].w, bc_screen.z / screenCoords[2].w };
+			bc_clip = bc_clip / (bc_clip.x + bc_clip.y + bc_clip.z);
+			float depth = glm::dot({ screenCoords[0].z, screenCoords[1].z, screenCoords[2].z }, bc_clip);
+			uint32_t depthIndex = x + y * frameBuffer.width;
+			if (depth < frameBuffer.zBuffer[depthIndex])
+			{
+				//绘制到屏幕
+				glm::vec2 point = sdlCoords * glm::vec3(x, y, 1);
+				SDL_SetRenderDrawColor(presentDevice, color.r, color.g, color.b, color.a);
+				SDL_RenderDrawPoint(presentDevice, point.x, point.y);
+
+				//绘制到图片
+				frameBuffer.colorAttachment.set(point.x, point.y, color);
+				float depthVal = (depth + 1) / 2 * 255;
+				frameBuffer.depthAttachment.set(point.x, point.y, TGAColor(depthVal, depthVal, depthVal, 255));
+				frameBuffer.zBuffer[depthIndex] = depth;
+			}
+		}
+	}
+}
+
+BoundingBox Renderer::GetBoundingBox(glm::vec4* vertices)
+{
+	BoundingBox bbox;
+	glm::vec2 min {0, 0};
+	glm::vec2 max { frameBuffer.width - 1, frameBuffer.height - 1 };
+
+	bbox.min = max;
+	bbox.max = min;
+	for (auto& i : {0, 1, 2})
+	{
+		bbox.min.x = std::max(min.x, std::min(bbox.min.x, vertices[i].x));
+		bbox.min.y = std::max(min.y, std::min(bbox.min.y, vertices[i].y));
+		bbox.max.x = std::min(max.x, std::max(bbox.max.x, vertices[i].x));
+		bbox.max.y = std::min(max.y, std::max(bbox.max.y, vertices[i].y));
+	}
+	return bbox;
+}
+glm::vec3 Renderer::BaryCentric(glm::vec4* vertices, glm::vec2& p)
+{
+	glm::vec2 v0 { vertices[0].x, vertices[0].y };
+	glm::vec2 v1 { vertices[1].x, vertices[1].y };
+	glm::vec2 v2 { vertices[2].x, vertices[2].y };
+	glm::vec2 v01 = v1 - v0;
+	glm::vec2 v02 = v2 - v0;
+	glm::vec2 vp0 = v0 -  p;
+	/*
+	 * b(v1 - v0) + c(v2 - v0) + (v0 - p) = 0
+	 * 
+	 */
+	glm::vec3 mass = glm::cross(glm::vec3(v01.x, v02.x, vp0.x), glm::vec3(v01.y, v02.y, vp0.y));
+	if (mass.z < 1e-2)
+	{
+		return { -1, 1, 1 };
+	}
+	return { 1.0 - (mass.x + mass.y) / mass.z, mass.x / mass.z, mass.y / mass.z };
+}
+
+void Renderer::Draw()
 {
 	#pragma region INIT
 	TGAColor red = TGAColor(255, 0, 0, 255);
@@ -114,28 +190,17 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 			float intensity = glm::dot(normal, lightDir);
 			if (intensity > 0)
 			{
-				BaryCentricTriangle(clipCoords, frameBuffer, depthBuffer, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255), zBuffer, viewport, renderer);
+				rasterize(clipCoords, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255));
 			}
 		}
 	}
-	frameBuffer.flip_vertically();
-	depthBuffer.flip_vertically();
-	frameBuffer.write_tga_file("color.tga");
-	depthBuffer.write_tga_file("depth.tga");
+	
+	frameBuffer.colorAttachment.write_tga_file("color.tga");
+	frameBuffer.depthAttachment.write_tga_file("depth.tga");
 	#pragma endregion
 }
 
 void Renderer::Clear()
 {
-	frameBuffer.clear();
-	depthBuffer.clear();
-	for (uint32_t i = 0; i < screenwidth * screenheight; i++)
-	{
-		zBuffer[i] = std::numeric_limits<double>::max();
-	}
-}
-
-Renderer::~Renderer()
-{
-	delete[] zBuffer;
+	frameBuffer.Clear();
 }
