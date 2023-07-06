@@ -1,7 +1,7 @@
 #include "Renderer.h"
 #include "model.h"
 #include "../utils/Line.h"
-#include "FlatShader.h"
+#include "shader/FlatShader.h"
 
 
 Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
@@ -62,8 +62,7 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 			float depth = glm::dot({ screenCoords[0].z, screenCoords[1].z, screenCoords[2].z }, bc_clip);
 			uint32_t depthIndex = x + y * frameBuffer.width;
 			if (depth < frameBuffer.zBuffer[depthIndex])
-			{				
-				
+			{								
 				if (!shader->Fragment(gl_FragColor, intensity))
 				{
 					continue;
