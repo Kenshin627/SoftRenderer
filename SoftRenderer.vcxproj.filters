@@ -39,7 +39,10 @@
     <ClCompile Include="src\renderer\Camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\FlatShader.cpp">
+    <ClCompile Include="src\renderer\shader\FlatShader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\shader\GouraudShader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -65,10 +68,13 @@
     <ClInclude Include="src\renderer\Camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\Shader.h">
+    <ClInclude Include="src\renderer\shader\Shader.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\FlatShader.h">
+    <ClInclude Include="src\renderer\shader\FlatShader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\shader\GouraudShader.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
