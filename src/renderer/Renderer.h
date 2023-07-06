@@ -5,6 +5,8 @@
 #include <vector>
 #include "model.h"
 #include <sdl2/include/SDL.h>
+#include "Shader.h"
+#include <memory>
 
 struct BoundingBox
 {
@@ -44,7 +46,7 @@ public:
 	void Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	Camera& GetCamera() { return camera; }
 	void Draw();
-	void rasterize(glm::vec4* clipVertices, const TGAColor& color);
+	void rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords);
 	BoundingBox GetBoundingBox(glm::vec4* vertices);
 	glm::vec3 BaryCentric(glm::vec4* vertices, glm::vec2& p);
 	float LinearDepth(float near, float far, float depth);
@@ -56,4 +58,6 @@ private:
 	FrameBuffer frameBuffer;	
 	glm::mat3 sdlCoords;
 	std::vector<Model> models;
+	std::unique_ptr<Shader> shader;
+	glm::vec3 lightDir{ 0.0, 0.0, -1.0 };
 };

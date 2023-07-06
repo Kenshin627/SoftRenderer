@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "model.h"
 #include "../utils/Line.h"
+#include "FlatShader.h"
 
 
 Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
@@ -13,6 +14,8 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	frameBuffer.height = height;
 	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
 	models.emplace_back("source/models/head/head.obj");
+	shader = std::make_unique<FlatShader>();
+	shader->baseColor = { 255, 255, 255 };
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
@@ -32,12 +35,16 @@ void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 	};
 }
 
-void Renderer::rasterize(glm::vec4* clipVertices, const TGAColor& color)
+void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 {
 	glm::vec4 screenCoords[3] = { viewport * clipVertices[0], viewport * clipVertices[1], viewport * clipVertices[2] };
 	glm::vec4 screenCoordsCliped[3] = { screenCoords[0] / screenCoords[0].w, screenCoords[1] / screenCoords[1].w, screenCoords[2] / screenCoords[2].w };
 
+	glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
+	normal = glm::normalize(normal);
+	float intensity = glm::dot(normal, lightDir);
 	BoundingBox bbox = GetBoundingBox(screenCoordsCliped);
+	glm::vec4 gl_FragColor;
 	for (uint32_t y = bbox.min.y; y <= bbox.max.y; y++)
 	{
 		for (uint32_t x = bbox.min.x; x <= bbox.max.x ; x++)
@@ -49,20 +56,25 @@ void Renderer::rasterize(glm::vec4* clipVertices, const TGAColor& color)
 			{
 				continue;
 			}
-
+			
 			glm::vec3 bc_clip = { bc_screen.x / screenCoords[0].w, bc_screen.y / screenCoords[1].w, bc_screen.z / screenCoords[2].w };
 			bc_clip = bc_clip / (bc_clip.x + bc_clip.y + bc_clip.z);
 			float depth = glm::dot({ screenCoords[0].z, screenCoords[1].z, screenCoords[2].z }, bc_clip);
 			uint32_t depthIndex = x + y * frameBuffer.width;
 			if (depth < frameBuffer.zBuffer[depthIndex])
-			{
+			{				
+				
+				if (!shader->Fragment(gl_FragColor, intensity))
+				{
+					continue;
+				}
 				//绘制到屏幕
 				glm::vec2 point = sdlCoords * glm::vec3(x, y, 1);
-				SDL_SetRenderDrawColor(presentDevice, color.r, color.g, color.b, color.a);
+				SDL_SetRenderDrawColor(presentDevice, gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a);
 				SDL_RenderDrawPoint(presentDevice, point.x, point.y);
 
 				//绘制到图片
-				frameBuffer.colorAttachment.set(point.x, point.y, color);
+				frameBuffer.colorAttachment.set(point.x, point.y, TGAColor(gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a));
 				float depthVal = LinearDepth(camera.GetNear(), camera.GetFar(), depth) * 255;
 				frameBuffer.depthAttachment.set(point.x, point.y, TGAColor(depthVal, depthVal, depthVal, 255));
 				frameBuffer.zBuffer[depthIndex] = depth;
@@ -172,8 +184,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	#pragma region FACE SHADING
 	glm::vec3 worldCoords[3];
 	glm::vec4 clipCoords[3];
-	glm::vec3 lightDir{ 0.0, 0.0, -1.0 };
-
+	
 	for (uint32_t i = 0; i < models.size(); i++)
 	{
 		Model model = models[i];
@@ -183,15 +194,10 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 				auto vertex = model.vert(i, j);
 				glm::vec3 pos = { vertex.x, vertex.y, vertex.z };
 				worldCoords[j] = pos;
-				clipCoords[j] = camera.GetProjection() * camera.GetView() * glm::vec4(pos.x, pos.y, pos.z, 1.0);
+				shader->Vertex(clipCoords[j], glm::vec4(pos.x, pos.y, pos.z, 1.0), camera.GetProjection() * camera.GetView());
 			}
-			glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
-			normal = glm::normalize(normal);
-			float intensity = glm::dot(normal, lightDir);
-			if (intensity > 0)
-			{
-				rasterize(clipCoords, TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255));
-			}
+			
+			rasterize(clipCoords, worldCoords);
 		}
 	}
 	
