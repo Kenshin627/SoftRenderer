@@ -63,7 +63,7 @@ void Renderer::rasterize(glm::vec4* clipVertices, const TGAColor& color)
 
 				//ªÊ÷∆µΩÕº∆¨
 				frameBuffer.colorAttachment.set(point.x, point.y, color);
-				float depthVal = (depth + 1) / 2 * 255;
+				float depthVal = LinearDepth(camera.GetNear(), camera.GetFar(), depth) * 255;
 				frameBuffer.depthAttachment.set(point.x, point.y, TGAColor(depthVal, depthVal, depthVal, 255));
 				frameBuffer.zBuffer[depthIndex] = depth;
 			}
@@ -198,6 +198,12 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	frameBuffer.colorAttachment.write_tga_file("color.tga");
 	frameBuffer.depthAttachment.write_tga_file("depth.tga");
 	#pragma endregion
+}
+
+float Renderer::LinearDepth(float near, float far, float depth)
+{
+	depth = (depth + 1.0) / 2.0;
+	return (2.0 * near) / (far + near - depth * (far - near));
 }
 
 void Renderer::Clear()

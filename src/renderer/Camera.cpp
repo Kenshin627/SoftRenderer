@@ -3,6 +3,9 @@
 
 Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
 {
+	zNear = near;
+	zFar = far;
+
 	//Rotation
 	glm::vec3 z = eye - center;
 	z = glm::normalize(z);

@@ -47,6 +47,7 @@ public:
 	void rasterize(glm::vec4* clipVertices, const TGAColor& color);
 	BoundingBox GetBoundingBox(glm::vec4* vertices);
 	glm::vec3 BaryCentric(glm::vec4* vertices, glm::vec2& p);
+	float LinearDepth(float near, float far, float depth);
 	void Clear();
 private:
 	SDL_Renderer* presentDevice;
