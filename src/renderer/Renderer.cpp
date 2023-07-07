@@ -16,7 +16,9 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	frameBuffer.width = width;
 	frameBuffer.height = height;
 	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
-	models.emplace_back("source/models/head/african_head.obj");
+	models.emplace_back("source/models/head/head/african_head.obj");
+	models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
+	models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
 	//shader = std::make_unique<FlatShader>();
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
@@ -24,12 +26,14 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	shader = std::make_unique<BlinnPhongShader>();
 
 	shader->baseColor = { 255,255,255 };
+
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
 {
 	camera = Camera(eye, center, up, fov, aspectRatio, near, far);
 	shader->modelViewprojection = camera.GetViewProjection();
+	shader->cameraPos = camera.GetPosition();
 }
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
@@ -200,6 +204,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	{
 		Model model = models[i];
 		shader->SetUniformSampler(0, model.diffuse());
+		shader->SetUniformSampler(1, model.specular());
 		for (int i = 0; i < model.nfaces(); i++) {
 			for (int j = 0; j < 3; j++)
 			{

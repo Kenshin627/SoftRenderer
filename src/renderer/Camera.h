@@ -10,6 +10,7 @@ public:
 	const glm::mat4& GetView() const { return view; }
 	const glm::mat4& GetProjection() const { return projection; }
 	const glm::mat4& GetViewProjection() const { return viewProjection; }
+	const glm::vec3& GetPosition() const { return position; }
 	float GetNear() { return zNear; }
 	float GetFar() { return zFar; }
 	~Camera() = default;
@@ -20,4 +21,5 @@ private:
 	glm::mat4 viewProjection = glm::identity<glm::mat4>();
 	float zNear;
 	float zFar;
+	glm::vec3 position;
 };

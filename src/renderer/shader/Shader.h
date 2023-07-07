@@ -16,6 +16,7 @@ public:
 	glm::vec3 baseColor { 0, 0, 0 };
 	glm::mat4 modelViewprojection;
 	glm::vec3 lightDir { 0, 1, 1 };
+	glm::vec3 cameraPos;
 	TGAImage diffuseTexture;
 	TGAImage specularTexture;
 	TGAImage normalMap;

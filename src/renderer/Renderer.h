@@ -61,5 +61,5 @@ private:
 	glm::mat3 sdlCoords;
 	std::vector<Model> models;
 	std::unique_ptr<Shader> shader;
-	glm::vec3 lightDir{ 0.0, 0.0, -1.0 };
+	glm::vec3 lightDir{ 1.0, 0.0, 0.0 };
 };

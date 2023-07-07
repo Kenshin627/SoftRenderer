@@ -5,7 +5,7 @@ Camera::Camera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& u
 {
 	zNear = near;
 	zFar = far;
-
+	position = eye;
 	//Rotation
 	glm::vec3 z = eye - center;
 	z = glm::normalize(z);
