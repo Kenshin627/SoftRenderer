@@ -45,6 +45,12 @@
     <ClCompile Include="src\renderer\shader\GouraudShader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\shader\ToonShader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\shader\PixelShader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vendor\tgaimage\tgaimage.h">
@@ -75,6 +81,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\shader\GouraudShader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\shader\ToonShader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\shader\PixelShader.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

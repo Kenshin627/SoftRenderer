@@ -1,16 +1,16 @@
 #include "FlatShader.h"
 
-void FlatShader::Vertex(glm::vec4& gl_Position, const glm::vec4& vertexPosition, const glm::mat4& modelViewProjection) const
+void FlatShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex)
 {
-	gl_Position = modelViewProjection * vertexPosition;
+	gl_Position = modelViewprojection * vertex.position;
 }
 
 bool FlatShader::Fragment(glm::vec4& gl_FragColor, float intensity) const
 {
 	if (intensity <= 0)
 	{
-		return false;
+		return true;
 	}
 	gl_FragColor = { baseColor.r * intensity, baseColor.g * intensity, baseColor.b * intensity, 255 };
-	return true;
+	return false;
 }

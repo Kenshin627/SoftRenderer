@@ -2,7 +2,9 @@
 #include "model.h"
 #include "../utils/Line.h"
 #include "shader/FlatShader.h"
-
+#include "shader/GouraudShader.h"
+#include "shader/ToonShader.h"
+#include "shader/PixelShader.h"
 
 Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 {
@@ -13,14 +15,18 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	frameBuffer.width = width;
 	frameBuffer.height = height;
 	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
-	models.emplace_back("source/models/head/head.obj");
-	shader = std::make_unique<FlatShader>();
-	shader->baseColor = { 255, 255, 255 };
+	models.emplace_back("source/models/david/rapid2.obj");
+	//shader = std::make_unique<FlatShader>();
+	//shader = std::make_unique<GouraudShader>();
+	//shader = std::make_unique<ToonShader>();
+	shader = std::make_unique<PixelShader>();
+	shader->baseColor = { 255,255,255 };
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
 {
 	camera = Camera(eye, center, up, fov, aspectRatio, near, far);
+	shader->modelViewprojection = camera.GetViewProjection();
 }
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
@@ -55,16 +61,18 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 			if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
 			{
 				continue;
-			}
-			
-			glm::vec3 bc_clip = { bc_screen.x / screenCoords[0].w, bc_screen.y / screenCoords[1].w, bc_screen.z / screenCoords[2].w };
+			}			
+			/*glm::vec3 bc_clip = { bc_screen.x / screenCoords[0].w, bc_screen.y / screenCoords[1].w, bc_screen.z / screenCoords[2].w };
 			bc_clip = bc_clip / (bc_clip.x + bc_clip.y + bc_clip.z);
-			float depth = glm::dot({ screenCoords[0].z, screenCoords[1].z, screenCoords[2].z }, bc_clip);
+			float depth = glm::dot({ screenCoords[0].z, screenCoords[1].z, screenCoords[2].z }, bc_clip);*/
+			float depth = 1.0 / (bc_screen.x / screenCoords[0].z + bc_screen.y / screenCoords[1].z + bc_screen.z / screenCoords[2].z);
+			shader->baryCentricCoords = { depth * bc_screen.x / screenCoords[0].z, depth * bc_screen.y / screenCoords[1].z, depth * bc_screen.z / screenCoords[2].z };
 			uint32_t depthIndex = x + y * frameBuffer.width;
 			if (depth < frameBuffer.zBuffer[depthIndex])
 			{								
-				if (!shader->Fragment(gl_FragColor, intensity))
+				if (shader->Fragment(gl_FragColor, intensity))
 				{
+					//Discard
 					continue;
 				}
 				//»æÖÆµ½ÆÁÄ»
@@ -99,6 +107,7 @@ BoundingBox Renderer::GetBoundingBox(glm::vec4* vertices)
 	}
 	return bbox;
 }
+
 glm::vec3 Renderer::BaryCentric(glm::vec4* vertices, glm::vec2& p)
 {
 	glm::vec2 v0 { vertices[0].x, vertices[0].y };
@@ -190,10 +199,13 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 		for (int i = 0; i < model.nfaces(); i++) {
 			for (int j = 0; j < 3; j++)
 			{
-				auto vertex = model.vert(i, j);
-				glm::vec3 pos = { vertex.x, vertex.y, vertex.z };
+				vec3 position = model.vert(i, j);
+				vec3 normal = model.normal(i, j);
+				normal.normalized();
+				glm::vec3 pos = { position.x, position.y, position.z };
 				worldCoords[j] = pos;
-				shader->Vertex(clipCoords[j], glm::vec4(pos.x, pos.y, pos.z, 1.0), camera.GetProjection() * camera.GetView());
+				VertexAttribute vertex { glm::vec4(pos.x, pos.y, pos.z, 1.0), glm::vec3(normal.x, normal.y, normal.z) };
+				shader->Vertex(clipCoords[j], vertex, j);
 			}
 			
 			rasterize(clipCoords, worldCoords);

@@ -84,6 +84,6 @@ vec2 Model::uv(const int iface, const int nthvert) const {
     return tex_coord[facet_tex[iface * 3 + nthvert]];
 }
 
-//vec3 Model::normal(const int iface, const int nthvert) {
-//    return norms[facet_nrm[iface * 3 + nthvert]];
-//}
+vec3 Model::normal(const int iface, const int nthvert) {
+    return norms[facet_nrm[iface * 3 + nthvert]];
+}

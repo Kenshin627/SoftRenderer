@@ -5,7 +5,7 @@
 #include <vector>
 #include "model.h"
 #include <sdl2/include/SDL.h>
-#include "Shader.h"
+#include "shader/Shader.h"
 #include <memory>
 
 struct BoundingBox
@@ -18,9 +18,9 @@ struct FrameBuffer
 {
 	TGAImage colorAttachment;
 	TGAImage depthAttachment;
-	float* zBuffer;
-	uint32_t width;
-	uint32_t height;
+	float* zBuffer = nullptr;
+	uint32_t width = 0;
+	uint32_t height = 0;
 	~FrameBuffer()
 	{
 		delete [] zBuffer;
@@ -36,6 +36,8 @@ struct FrameBuffer
 		}
 	}
 };
+
+
 
 class Renderer
 {
