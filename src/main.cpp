@@ -20,7 +20,7 @@ int main(int argc, char* argv[])
 	window = SDL_CreateWindow("SoftRenderer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
 	sdlRenderer = SDL_CreateRenderer(window, -1, 0);
 	Renderer renderer(sdlRenderer, SCREEN_WIDTH, SCREEN_HEIGHT);
-	renderer.InitCamera({ 0, 0, 3 }, { 0,0,0 }, { 0,1,0 }, 3.14159265358 / 4.0, ASPECT, 0.01, 10.0);
+	renderer.InitCamera({ 1, 1, 3 }, { 0,0,0 }, { 0,1,0 }, 3.14159265358 / 4.0, ASPECT, 0.01, 10.0);
 	renderer.Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	while (!shouldClose)
 	{

@@ -51,6 +51,9 @@
     <ClCompile Include="src\renderer\shader\PixelShader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\shader\BlinnPhongShader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vendor\tgaimage\tgaimage.h">
@@ -87,6 +90,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\shader\PixelShader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\shader\BlinnPhongShader.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

@@ -9,7 +9,7 @@ void ToonShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, u
 }
 
 //return discard
-bool ToonShader::Fragment(glm::vec4& gl_FragColor, float intensity) const
+bool ToonShader::Fragment(glm::vec4& gl_FragColor, float intensity)
 {
 	//重心坐标插值计算当前像素点光照强度
 	float pixelIntensity = glm::max<float>(0.0, glm::dot(vertexIntensity, baryCentricCoords));

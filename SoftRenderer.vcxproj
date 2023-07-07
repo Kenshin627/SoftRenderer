@@ -134,6 +134,7 @@
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\renderer\Camera.cpp" />
+    <ClCompile Include="src\renderer\shader\BlinnPhongShader.cpp" />
     <ClCompile Include="src\renderer\shader\FlatShader.cpp" />
     <ClCompile Include="src\renderer\math.cpp" />
     <ClCompile Include="src\renderer\model.cpp" />
@@ -147,6 +148,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\renderer\Camera.h" />
+    <ClInclude Include="src\renderer\shader\BlinnPhongShader.h" />
     <ClInclude Include="src\renderer\shader\FlatShader.h" />
     <ClInclude Include="src\renderer\math.h" />
     <ClInclude Include="src\renderer\model.h" />

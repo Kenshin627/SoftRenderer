@@ -5,6 +5,7 @@
 #include "shader/GouraudShader.h"
 #include "shader/ToonShader.h"
 #include "shader/PixelShader.h"
+#include "shader/BlinnPhongShader.h"
 
 Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 {
@@ -15,11 +16,13 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	frameBuffer.width = width;
 	frameBuffer.height = height;
 	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
-	models.emplace_back("source/models/david/rapid2.obj");
+	models.emplace_back("source/models/head/african_head.obj");
 	//shader = std::make_unique<FlatShader>();
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
-	shader = std::make_unique<PixelShader>();
+	//shader = std::make_unique<PixelShader>();
+	shader = std::make_unique<BlinnPhongShader>();
+
 	shader->baseColor = { 255,255,255 };
 }
 
@@ -196,15 +199,17 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	for (uint32_t i = 0; i < models.size(); i++)
 	{
 		Model model = models[i];
+		shader->SetUniformSampler(0, model.diffuse());
 		for (int i = 0; i < model.nfaces(); i++) {
 			for (int j = 0; j < 3; j++)
 			{
 				vec3 position = model.vert(i, j);
 				vec3 normal = model.normal(i, j);
+				vec2 uv = model.uv(i, j);
 				normal.normalized();
 				glm::vec3 pos = { position.x, position.y, position.z };
 				worldCoords[j] = pos;
-				VertexAttribute vertex { glm::vec4(pos.x, pos.y, pos.z, 1.0), glm::vec3(normal.x, normal.y, normal.z) };
+				VertexAttribute vertex { glm::vec4(pos.x, pos.y, pos.z, 1.0), glm::vec3(normal.x, normal.y, normal.z), glm::vec2(uv.x, uv.y)};
 				shader->Vertex(clipCoords[j], vertex, j);
 			}
 			

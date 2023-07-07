@@ -7,7 +7,7 @@ void PixelShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, 
 }
 
 //return discard
-bool PixelShader::Fragment(glm::vec4& gl_FragColor, float intensity) const
+bool PixelShader::Fragment(glm::vec4& gl_FragColor, float intensity)
 {
 	//重心坐标插值计算当前像素点法线，逐像素计算光照
 	glm::vec3 n = normals[0] * baryCentricCoords.x + normals[1] * baryCentricCoords.y + normals[2] * baryCentricCoords.z;
