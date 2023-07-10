@@ -6,6 +6,7 @@
 #include "shader/ToonShader.h"
 #include "shader/PixelShader.h"
 #include "shader/BlinnPhongShader.h"
+#include "shader/TBNShader.h"
 
 Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 {
@@ -23,7 +24,8 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
 	//shader = std::make_unique<PixelShader>();
-	shader = std::make_unique<BlinnPhongShader>();
+	//shader = std::make_unique<BlinnPhongShader>();
+	shader = std::make_unique<TBNShader>();
 
 	shader->baseColor = { 255,255,255 };
 
@@ -199,7 +201,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	#pragma region FACE SHADING
 	glm::vec3 worldCoords[3];
 	glm::vec4 clipCoords[3];
-	
+	glm::vec2 uvs[3];
 	for (uint32_t i = 0; i < models.size(); i++)
 	{
 		Model model = models[i];
@@ -212,13 +214,14 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 				vec3 position = model.vert(i, j);
 				vec3 normal = model.normal(i, j);
 				vec2 uv = model.uv(i, j);
+				uvs[j] = { uv.x, uv.y };
 				normal.normalized();
 				glm::vec3 pos = { position.x, position.y, position.z };
 				worldCoords[j] = pos;
 				VertexAttribute vertex { glm::vec4(pos.x, pos.y, pos.z, 1.0), glm::vec3(normal.x, normal.y, normal.z), glm::vec2(uv.x, uv.y)};
 				shader->Vertex(clipCoords[j], vertex, j);
 			}
-			
+			computeTBN(worldCoords, uvs, shader);
 			rasterize(clipCoords, worldCoords);
 		}
 	}
@@ -226,6 +229,28 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	frameBuffer.colorAttachment.write_tga_file("color.tga");
 	frameBuffer.depthAttachment.write_tga_file("depth.tga");
 	#pragma endregion
+}
+
+void Renderer::computeTBN(glm::vec3* positions, glm::vec2* uvs, std::unique_ptr<Shader>& shader)
+{
+	glm::vec3 e1 = positions[1] - positions[0];
+	glm::vec3 e2 = positions[2] - positions[0];
+	glm::vec2 deltaUV1 = uvs[1] - uvs[0];
+	glm::vec2 deltaUV2 = uvs[2] - uvs[0];
+	float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+	glm::vec3 tangent;
+	tangent.x = f * (deltaUV2.y * e1.x - deltaUV1.y * e2.x);
+	tangent.y = f * (deltaUV2.y * e1.y - deltaUV1.y * e2.y);
+	tangent.z = f * (deltaUV2.y * e1.z - deltaUV1.y * e2.z);
+	tangent = glm::normalize(tangent);
+
+	glm::vec3 bitangent;
+	bitangent.x = f * (-deltaUV2.x * e1.x + deltaUV1.x * e2.x);
+	bitangent.y = f * (-deltaUV2.x * e1.y + deltaUV1.x * e2.y);
+	bitangent.z = f * (-deltaUV2.x * e1.z + deltaUV1.x * e2.z);
+	bitangent = glm::normalize(bitangent);
+	shader->tangent = tangent;
+	shader->bitangent = bitangent;
 }
 
 float Renderer::LinearDepth(float near, float far, float depth)

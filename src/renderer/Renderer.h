@@ -52,6 +52,7 @@ public:
 	BoundingBox GetBoundingBox(glm::vec4* vertices);
 	glm::vec3 BaryCentric(glm::vec4* vertices, glm::vec2& p);
 	float LinearDepth(float near, float far, float depth);
+	void computeTBN(glm::vec3* positions, glm::vec2* uvs, std::unique_ptr<Shader>& shader);
 	void Clear();
 private:
 	SDL_Renderer* presentDevice;
