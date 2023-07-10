@@ -27,4 +27,5 @@ public:
     vec2 uv(const int iface, const int nthvert) const;
     const TGAImage& diffuse()  const { return diffusemap; }
     const TGAImage& specular() const { return specularmap; }
+    const TGAImage& normalMap() const { return normalmap; }
 };

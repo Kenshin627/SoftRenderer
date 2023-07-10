@@ -9,5 +9,5 @@ public:
 public:
 	glm::vec3 normals[3];
 	glm::vec2 uvs[3];
-	glm::vec3 Postions[3];
+	glm::vec3 postions[3];
 };

@@ -17,8 +17,8 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	frameBuffer.height = height;
 	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
 	models.emplace_back("source/models/head/head/african_head.obj");
-	models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
-	models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
+	//models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
+	//models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
 	//shader = std::make_unique<FlatShader>();
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
@@ -205,6 +205,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 		Model model = models[i];
 		shader->SetUniformSampler(0, model.diffuse());
 		shader->SetUniformSampler(1, model.specular());
+		shader->SetUniformSampler(2, model.normalMap());
 		for (int i = 0; i < model.nfaces(); i++) {
 			for (int j = 0; j < 3; j++)
 			{
