@@ -24,8 +24,8 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
 	//shader = std::make_unique<PixelShader>();
-	shader = std::make_unique<BlinnPhongShader>();
-	//shader = std::make_unique<TBNShader>();
+	//shader = std::make_unique<BlinnPhongShader>();
+	shader = std::make_unique<TBNShader>();
 	shader->baseColor = { 255,255,255 };
 }
 
