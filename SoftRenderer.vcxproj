@@ -142,6 +142,7 @@
     <ClCompile Include="src\renderer\Renderer.cpp" />
     <ClCompile Include="src\renderer\shader\GouraudShader.cpp" />
     <ClCompile Include="src\renderer\shader\PixelShader.cpp" />
+    <ClCompile Include="src\renderer\shader\PointLightShader.cpp" />
     <ClCompile Include="src\renderer\shader\TBNShader.cpp" />
     <ClCompile Include="src\renderer\shader\ToonShader.cpp" />
     <ClCompile Include="src\utils\Line.cpp" />
@@ -159,6 +160,7 @@
     <ClInclude Include="src\renderer\Renderer.h" />
     <ClInclude Include="src\renderer\shader\GouraudShader.h" />
     <ClInclude Include="src\renderer\shader\PixelShader.h" />
+    <ClInclude Include="src\renderer\shader\PointLightShader.h" />
     <ClInclude Include="src\renderer\shader\Shader.h" />
     <ClInclude Include="src\renderer\shader\TBNShader.h" />
     <ClInclude Include="src\renderer\shader\ToonShader.h" />

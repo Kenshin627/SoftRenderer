@@ -1,8 +1,9 @@
 #pragma once
+#include "../lights/pointLight/PointLight.h"
+#include "../lights/directionLight/DirectionLight.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <tgaimage/tgaimage.h>
-#include "../lights/directionLight/DirectionLight.h"
 
 struct VertexAttribute
 {
@@ -20,6 +21,7 @@ public:
 	glm::mat4 modelMatrix = glm::identity<glm::mat4>();
 	glm::mat3 invertTransposeModelMatrix = glm::identity<glm::mat4>();
 	DirectionLight dLight;
+	PointLight pLight;
 	glm::vec3 cameraPos;
 	TGAImage diffuseTexture;
 	TGAImage specularTexture;

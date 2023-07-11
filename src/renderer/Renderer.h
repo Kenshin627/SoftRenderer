@@ -3,6 +3,7 @@
 #include "model.h"
 #include "shader/Shader.h"
 #include "lights/directionLight/DirectionLight.h"
+#include "lights/pointLight/PointLight.h"
 #include <glm/glm.hpp>
 #include <tgaimage/tgaimage.h>
 #include <vector>
@@ -65,4 +66,5 @@ private:
 	std::vector<Model> models;
 	std::unique_ptr<Shader> shader;
 	DirectionLight dlight;
+	PointLight pLight;
 };

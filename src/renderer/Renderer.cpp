@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "../window/window.h"
 #include "model.h"
 #include "../utils/Line.h"
 #include "shader/FlatShader.h"
@@ -7,7 +8,7 @@
 #include "shader/PixelShader.h"
 #include "shader/BlinnPhongShader.h"
 #include "shader/TBNShader.h"
-#include "../window/window.h"
+#include "shader/PointLightShader.h"
 
 Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 {
@@ -25,7 +26,8 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	//shader = std::make_unique<ToonShader>();
 	//shader = std::make_unique<PixelShader>();
 	//shader = std::make_unique<BlinnPhongShader>();
-	shader = std::make_unique<TBNShader>();
+	//shader = std::make_unique<TBNShader>();
+	shader = std::make_unique<PointLightShader>();
 	shader->baseColor = { 255,255,255 };
 }
 
@@ -39,7 +41,9 @@ void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const g
 void Renderer::InitLight()
 {
 	dlight = DirectionLight({ 1.0, 1.0, 1.0 }, { 255, 255, 255 });
+	pLight = PointLight({ 0, 5, 2 }, { 255, 255, 255 }, 1.0, 0.09, 0.032);
 	shader->dLight = dlight;
+	shader->pLight = pLight;
 }
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
