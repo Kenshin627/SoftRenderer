@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <tgaimage/tgaimage.h>
+#include "../lights/directionLight/DirectionLight.h"
 
 struct VertexAttribute
 {
@@ -15,15 +16,16 @@ public:
 	glm::vec3 baryCentricCoords;
 	glm::vec3 baseColor { 0, 0, 0 };
 	glm::mat4 modelViewprojection;
-	glm::vec3 lightDir { 1, 1, 1 };
+	DirectionLight dLight;
 	glm::vec3 cameraPos;
 	TGAImage diffuseTexture;
 	TGAImage specularTexture;
 	TGAImage normalMap;
 	glm::vec3 tangent;
 	glm::vec3 bitangent;
+	float flatShadeIntensity;
 	virtual void Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex) = 0;
-	virtual bool Fragment(glm::vec4& gl_FragColor, float intensity) = 0;
+	virtual bool Fragment(glm::vec4& gl_FragColor) = 0;
 	/*
 	 * diffuse   - 0
 	 * specular  - 1 
@@ -42,6 +44,13 @@ public:
 		default:
 			break;
 		}
+	}
+
+	//[0 - 1]
+	glm::vec3 Sampler2D(const glm::vec2& uv, TGAImage& image)
+	{
+		TGAColor c = image.get(uv.x * image.get_width(), uv.y * image.get_height());
+		return glm::vec3(c.r / 255.0, c.g / 255.0, c.b / 255.0);
 	}
 };
 

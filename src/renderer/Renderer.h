@@ -2,6 +2,7 @@
 #include "Camera.h"
 #include "model.h"
 #include "shader/Shader.h"
+#include "lights/directionLight/DirectionLight.h"
 #include <glm/glm.hpp>
 #include <tgaimage/tgaimage.h>
 #include <vector>
@@ -46,6 +47,7 @@ public:
 	~Renderer() = default;
 	Renderer(Renderer & r) = default;
 	void InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far);
+	void InitLight();
 	void Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	Camera& GetCamera() { return camera; }
 	void Draw();
@@ -62,5 +64,5 @@ private:
 	FrameBuffer frameBuffer;	
 	std::vector<Model> models;
 	std::unique_ptr<Shader> shader;
-	glm::vec3 lightDir{ 1.0, 0.0, 0.0 };
+	DirectionLight dlight;
 };

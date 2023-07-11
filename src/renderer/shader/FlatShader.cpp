@@ -5,12 +5,12 @@ void FlatShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, u
 	gl_Position = modelViewprojection * vertex.position;
 }
 
-bool FlatShader::Fragment(glm::vec4& gl_FragColor, float intensity)
+bool FlatShader::Fragment(glm::vec4& gl_FragColor)
 {
-	if (intensity <= 0)
+	if (flatShadeIntensity <= 0)
 	{
 		return true;
 	}
-	gl_FragColor = { baseColor.r * intensity, baseColor.g * intensity, baseColor.b * intensity, 255 };
+	gl_FragColor = { baseColor.r * flatShadeIntensity, baseColor.g * flatShadeIntensity, baseColor.b * flatShadeIntensity, 255.0 };
 	return false;
 }

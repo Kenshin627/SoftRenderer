@@ -20,15 +20,13 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	models.emplace_back("source/models/head/head/african_head.obj");
 	//models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
 	//models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
-	//shader = std::make_unique<FlatShader>();
+	shader = std::make_unique<FlatShader>();
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
 	//shader = std::make_unique<PixelShader>();
 	//shader = std::make_unique<BlinnPhongShader>();
-	shader = std::make_unique<TBNShader>();
-
+	//shader = std::make_unique<TBNShader>();
 	shader->baseColor = { 255,255,255 };
-
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
@@ -36,6 +34,12 @@ void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const g
 	camera = Camera(eye, center, up, fov, aspectRatio, near, far);
 	shader->modelViewprojection = camera.GetViewProjection();
 	shader->cameraPos = camera.GetPosition();
+}
+
+void Renderer::InitLight()
+{
+	dlight = DirectionLight({ 1.0, 1.0, 1.0 }, { 255, 255, 255 });
+	shader->dLight = dlight;
 }
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
@@ -55,9 +59,9 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 	glm::vec4 screenCoords[3] = { viewport * clipVertices[0], viewport * clipVertices[1], viewport * clipVertices[2] };
 	glm::vec4 screenCoordsCliped[3] = { screenCoords[0] / screenCoords[0].w, screenCoords[1] / screenCoords[1].w, screenCoords[2] / screenCoords[2].w };
 
-	glm::vec3 normal = glm::cross(worldCoords[2] - worldCoords[0], worldCoords[1] - worldCoords[0]);
+	glm::vec3 normal = glm::cross(worldCoords[1] - worldCoords[0], worldCoords[2] - worldCoords[0]);
 	normal = glm::normalize(normal);
-	float intensity = glm::dot(normal, lightDir);
+	shader->flatShadeIntensity = glm::max<float>(0.0, glm::dot(normal, dlight.Direction()));
 	BoundingBox bbox = GetBoundingBox(screenCoordsCliped);
 	glm::vec4 gl_FragColor;
 	for (uint32_t y = bbox.min.y; y <= bbox.max.y; y++)
@@ -76,12 +80,11 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 			uint32_t depthIndex = x + y * frameBuffer.width;
 			if (depth < frameBuffer.zBuffer[depthIndex])
 			{								
-				if (shader->Fragment(gl_FragColor, intensity))
+				if (shader->Fragment(gl_FragColor))
 				{
 					//Discard
 					continue;
 				}
-
 				//»æÖÆµ½ÆÁÄ»
 				presentDevice->DrawPoint(x, y, gl_FragColor);
 				frameBuffer.zBuffer[depthIndex] = depth;
