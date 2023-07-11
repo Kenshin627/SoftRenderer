@@ -137,7 +137,6 @@
     <ClCompile Include="src\renderer\lights\directionLight\DirectionLight.cpp" />
     <ClCompile Include="src\renderer\shader\BlinnPhongShader.cpp" />
     <ClCompile Include="src\renderer\shader\FlatShader.cpp" />
-    <ClCompile Include="src\renderer\math.cpp" />
     <ClCompile Include="src\renderer\model.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp" />
     <ClCompile Include="src\renderer\shader\GouraudShader.cpp" />
@@ -154,7 +153,6 @@
     <ClInclude Include="src\renderer\lights\directionLight\DirectionLight.h" />
     <ClInclude Include="src\renderer\shader\BlinnPhongShader.h" />
     <ClInclude Include="src\renderer\shader\FlatShader.h" />
-    <ClInclude Include="src\renderer\math.h" />
     <ClInclude Include="src\renderer\model.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <ClInclude Include="src\renderer\shader\GouraudShader.h" />

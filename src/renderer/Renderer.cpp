@@ -207,14 +207,11 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 		for (int i = 0; i < model.nfaces(); i++) {
 			for (int j = 0; j < 3; j++)
 			{
-				vec3 position = model.vert(i, j);
-				vec3 normal = model.normal(i, j);
-				vec2 uv = model.uv(i, j);
-				uvs[j] = { uv.x, uv.y };
-				normal.normalized();
-				glm::vec3 pos = { position.x, position.y, position.z };
-				worldCoords[j] = pos;
-				VertexAttribute vertex { glm::vec4(pos.x, pos.y, pos.z, 1.0), glm::vec3(normal.x, normal.y, normal.z), glm::vec2(uv.x, uv.y)};
+				worldCoords[j] = model.vert(i, j);
+				glm::vec3 normal = model.normal(i, j);
+				uvs[j] = model.uv(i, j);
+				normal = glm::normalize(normal);				
+				VertexAttribute vertex { glm::vec4(worldCoords[j].x, worldCoords[j].y, worldCoords[j].z, 1.0), glm::vec3(normal.x, normal.y, normal.z), glm::vec2(uvs[j].x, uvs[j].y)};
 				shader->Vertex(clipCoords[j], vertex, j);
 			}
 			computeTBN(worldCoords, uvs, shader);
