@@ -135,6 +135,7 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\renderer\Camera.cpp" />
     <ClCompile Include="src\renderer\lights\directionLight\DirectionLight.cpp" />
+    <ClCompile Include="src\renderer\lights\pointLight\PointLight.cpp" />
     <ClCompile Include="src\renderer\shader\BlinnPhongShader.cpp" />
     <ClCompile Include="src\renderer\shader\FlatShader.cpp" />
     <ClCompile Include="src\renderer\model.cpp" />
@@ -151,6 +152,7 @@
   <ItemGroup>
     <ClInclude Include="src\renderer\Camera.h" />
     <ClInclude Include="src\renderer\lights\directionLight\DirectionLight.h" />
+    <ClInclude Include="src\renderer\lights\pointLight\PointLight.h" />
     <ClInclude Include="src\renderer\shader\BlinnPhongShader.h" />
     <ClInclude Include="src\renderer\shader\FlatShader.h" />
     <ClInclude Include="src\renderer\model.h" />
