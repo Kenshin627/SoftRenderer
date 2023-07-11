@@ -145,6 +145,7 @@
     <ClCompile Include="src\renderer\shader\ToonShader.cpp" />
     <ClCompile Include="src\utils\Line.cpp" />
     <ClCompile Include="src\utils\Triangle.cpp" />
+    <ClCompile Include="src\window\window.cpp" />
     <ClCompile Include="vendor\tgaimage\tgaimage.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -161,6 +162,7 @@
     <ClInclude Include="src\renderer\shader\ToonShader.h" />
     <ClInclude Include="src\utils\Line.h" />
     <ClInclude Include="src\utils\Triangle.h" />
+    <ClInclude Include="src\window\window.h" />
     <ClInclude Include="vendor\tgaimage\tgaimage.h" />
   </ItemGroup>
   <ItemGroup>

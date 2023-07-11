@@ -19,7 +19,7 @@ private:
 	glm::mat4 view = glm::identity<glm::mat4>();
 	glm::mat4 projection = glm::identity<glm::mat4>();
 	glm::mat4 viewProjection = glm::identity<glm::mat4>();
-	float zNear;
-	float zFar;
-	glm::vec3 position;
+	float zNear = 0.0;
+	float zFar = 0.0;
+	glm::vec3 position{ 0, 0, 0} ;
 };

@@ -1,12 +1,13 @@
 #pragma once
-#include <glm/glm.hpp>
 #include "Camera.h"
+#include "model.h"
+#include "shader/Shader.h"
+#include <glm/glm.hpp>
 #include <tgaimage/tgaimage.h>
 #include <vector>
-#include "model.h"
-#include <sdl2/include/SDL.h>
-#include "shader/Shader.h"
 #include <memory>
+
+class Window;
 
 struct BoundingBox
 {
@@ -37,13 +38,13 @@ struct FrameBuffer
 	}
 };
 
-
-
 class Renderer
 {
 public:
-	Renderer(SDL_Renderer* presentDevice, uint32_t width, uint32_t height);
+	Renderer() = default;
+	Renderer(Window* presentDevice, uint32_t width, uint32_t height);
 	~Renderer() = default;
+	Renderer(Renderer & r) = default;
 	void InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far);
 	void Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	Camera& GetCamera() { return camera; }
@@ -55,11 +56,10 @@ public:
 	void computeTBN(glm::vec3* positions, glm::vec2* uvs, std::unique_ptr<Shader>& shader);
 	void Clear();
 private:
-	SDL_Renderer* presentDevice;
+	Window* presentDevice;
 	Camera camera;
 	glm::mat4 viewport;
 	FrameBuffer frameBuffer;	
-	glm::mat3 sdlCoords;
 	std::vector<Model> models;
 	std::unique_ptr<Shader> shader;
 	glm::vec3 lightDir{ 1.0, 0.0, 0.0 };

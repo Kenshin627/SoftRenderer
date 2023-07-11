@@ -7,8 +7,9 @@
 #include "shader/PixelShader.h"
 #include "shader/BlinnPhongShader.h"
 #include "shader/TBNShader.h"
+#include "../window/window.h"
 
-Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
+Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 {
 	presentDevice = device;
 	frameBuffer.colorAttachment = TGAImage(width, height, TGAImage::RGB);
@@ -16,7 +17,6 @@ Renderer::Renderer(SDL_Renderer* device, uint32_t width, uint32_t height)
 	frameBuffer.zBuffer = new float[width * height];
 	frameBuffer.width = width;
 	frameBuffer.height = height;
-	sdlCoords = glm::mat3({ 1, 0, 0 }, { 0, 1, 0 }, { 0, frameBuffer.height, 1 }) * glm::mat3({ 1, 0, 0 }, { 0, -1, 0 }, { 0, 0, 1 });
 	models.emplace_back("source/models/head/head/african_head.obj");
 	//models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
 	//models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
@@ -71,9 +71,6 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 			{
 				continue;
 			}			
-			/*glm::vec3 bc_clip = { bc_screen.x / screenCoords[0].w, bc_screen.y / screenCoords[1].w, bc_screen.z / screenCoords[2].w };
-			bc_clip = bc_clip / (bc_clip.x + bc_clip.y + bc_clip.z);
-			float depth = glm::dot({ screenCoords[0].z, screenCoords[1].z, screenCoords[2].z }, bc_clip);*/
 			float depth = 1.0 / (bc_screen.x / screenCoords[0].z + bc_screen.y / screenCoords[1].z + bc_screen.z / screenCoords[2].z);
 			shader->baryCentricCoords = { depth * bc_screen.x / screenCoords[0].z, depth * bc_screen.y / screenCoords[1].z, depth * bc_screen.z / screenCoords[2].z };
 			uint32_t depthIndex = x + y * frameBuffer.width;
@@ -84,16 +81,14 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
 					//Discard
 					continue;
 				}
-				//绘制到屏幕
-				glm::vec2 point = sdlCoords * glm::vec3(x, y, 1);
-				SDL_SetRenderDrawColor(presentDevice, gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a);
-				SDL_RenderDrawPoint(presentDevice, point.x, point.y);
 
-				//绘制到图片
-				frameBuffer.colorAttachment.set(point.x, point.y, TGAColor(gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a));
-				float depthVal = LinearDepth(camera.GetNear(), camera.GetFar(), depth) * 255;
-				frameBuffer.depthAttachment.set(point.x, point.y, TGAColor(depthVal, depthVal, depthVal, 255));
+				//绘制到屏幕
+				presentDevice->DrawPoint(x, y, gl_FragColor);
 				frameBuffer.zBuffer[depthIndex] = depth;
+				//绘制到图片
+				/*frameBuffer.colorAttachment.set(point.x, point.y, TGAColor(gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a));
+				float depthVal = LinearDepth(camera.GetNear(), camera.GetFar(), depth) * 255;
+				frameBuffer.depthAttachment.set(point.x, point.y, TGAColor(depthVal, depthVal, depthVal, 255));*/
 			}
 		}
 	}
@@ -125,10 +120,8 @@ glm::vec3 Renderer::BaryCentric(glm::vec4* vertices, glm::vec2& p)
 	glm::vec2 v01 = v1 - v0;
 	glm::vec2 v02 = v2 - v0;
 	glm::vec2 vp0 = v0 -  p;
-	/*
-	 * b(v1 - v0) + c(v2 - v0) + (v0 - p) = 0
-	 * 
-	 */
+	
+	//TODO:　b(v1 - v0) + c(v2 - v0) + (v0 - p) = 0
 	glm::vec3 mass = glm::cross(glm::vec3(v01.x, v02.x, vp0.x), glm::vec3(v01.y, v02.y, vp0.y));
 	if (mass.z < 1e-2)
 	{
