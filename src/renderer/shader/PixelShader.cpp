@@ -2,8 +2,8 @@
 
 void PixelShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex)
 {
-	normals[gl_VertexIndex] = vertex.normal;
-	gl_Position = viewprojectionMatrix * vertex.position;
+	normals[gl_VertexIndex] = glm::normalize(invertTransposeModelMatrix * vertex.normal);
+	gl_Position = viewprojectionMatrix * modelMatrix * vertex.position;
 }
 
 //return discard

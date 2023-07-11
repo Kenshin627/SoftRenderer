@@ -3,8 +3,8 @@
 void GouraudShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex)
 {
 	//逐顶点计算光照，将光照计算结果在fragment重心坐标插值
-	vertexIntensity[gl_VertexIndex] = glm::max<float>(0.0, glm::dot(vertex.normal, dLight.Direction()));
-	gl_Position = viewprojectionMatrix * vertex.position;
+	vertexIntensity[gl_VertexIndex] = glm::max<float>(0.0, glm::dot(glm::normalize(invertTransposeModelMatrix * vertex.normal), dLight.Direction()));
+	gl_Position = viewprojectionMatrix * modelMatrix * vertex.position;
 }
 
 //return discard

@@ -20,11 +20,11 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	models.emplace_back("source/models/head/head/african_head.obj");
 	//models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
 	//models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
-	shader = std::make_unique<FlatShader>();
+	//shader = std::make_unique<FlatShader>();
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
 	//shader = std::make_unique<PixelShader>();
-	//shader = std::make_unique<BlinnPhongShader>();
+	shader = std::make_unique<BlinnPhongShader>();
 	//shader = std::make_unique<TBNShader>();
 	shader->baseColor = { 255,255,255 };
 }

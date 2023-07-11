@@ -3,10 +3,10 @@
 
 void BlinnPhongShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex)
 {
-	positions[gl_VertexIndex] = vertex.position;
-	normals[gl_VertexIndex] = vertex.normal;
+	positions[gl_VertexIndex] = modelMatrix * vertex.position;
+	normals[gl_VertexIndex] = glm::normalize(invertTransposeModelMatrix * vertex.normal);
 	uvs[gl_VertexIndex] = vertex.uv;
-	gl_Position = viewprojectionMatrix * vertex.position;
+	gl_Position = viewprojectionMatrix * modelMatrix * vertex.position;
 }
 
 //return discard
