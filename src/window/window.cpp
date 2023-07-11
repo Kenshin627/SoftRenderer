@@ -23,6 +23,9 @@ void Window::Run()
 	SDL_Event event;
 	while (!closed)
 	{
+		uint64_t currentTime = SDL_GetPerformanceCounter();
+		deltaTime = (currentTime - preFrameTime) / (float)SDL_GetPerformanceFrequency();
+		preFrameTime = currentTime;
 		SDL_PollEvent(&event);
 		if(event.type == SDL_QUIT)
 		{
@@ -32,7 +35,7 @@ void Window::Run()
 		{
 			Clear();
 			softRenderer->Clear();
-			softRenderer->Draw();
+			softRenderer->Draw(deltaTime);
 			SDL_RenderPresent(sdlRenderer);
 		}
 	}

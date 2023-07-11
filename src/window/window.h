@@ -20,4 +20,6 @@ private:
 	Renderer* softRenderer = nullptr;
 	bool closed = false;
 	glm::mat3 screenTransform;
+	uint64_t deltaTime;
+	uint64_t preFrameTime;
 };

@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include "tgaimage/tgaimage.h"
 
 class Model {
@@ -27,4 +28,5 @@ public:
     const TGAImage& diffuse()  const { return diffusemap; }
     const TGAImage& specular() const { return specularmap; }
     const TGAImage& normalMap() const { return normalmap; }
+    glm::mat4 modelMatrix = glm::identity<glm::mat4>();
 };

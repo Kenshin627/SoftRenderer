@@ -50,7 +50,7 @@ public:
 	void InitLight();
 	void Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	Camera& GetCamera() { return camera; }
-	void Draw();
+	void Draw(uint64_t deltaTime);
 	void rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords);
 	BoundingBox GetBoundingBox(glm::vec4* vertices);
 	glm::vec3 BaryCentric(glm::vec4* vertices, glm::vec2& p);

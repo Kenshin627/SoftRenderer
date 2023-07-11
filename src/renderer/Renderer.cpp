@@ -32,7 +32,7 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
 {
 	camera = Camera(eye, center, up, fov, aspectRatio, near, far);
-	shader->modelViewprojection = camera.GetViewProjection();
+	shader->viewprojectionMatrix = camera.GetViewProjection();
 	shader->cameraPos = camera.GetPosition();
 }
 
@@ -54,13 +54,13 @@ void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 	};
 }
 
-void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* worldCoords)
+void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* localCoords)
 {
 	glm::vec4 screenCoords[3] = { viewport * clipVertices[0], viewport * clipVertices[1], viewport * clipVertices[2] };
 	glm::vec4 screenCoordsCliped[3] = { screenCoords[0] / screenCoords[0].w, screenCoords[1] / screenCoords[1].w, screenCoords[2] / screenCoords[2].w };
 
-	glm::vec3 normal = glm::cross(worldCoords[1] - worldCoords[0], worldCoords[2] - worldCoords[0]);
-	normal = glm::normalize(normal);
+	glm::vec3 normal = glm::cross(localCoords[1] - localCoords[0], localCoords[2] - localCoords[0]);
+	normal = glm::normalize(shader->invertTransposeModelMatrix * glm::normalize(normal));
 	shader->flatShadeIntensity = glm::max<float>(0.0, glm::dot(normal, dlight.Direction()));
 	BoundingBox bbox = GetBoundingBox(screenCoordsCliped);
 	glm::vec4 gl_FragColor;
@@ -133,7 +133,7 @@ glm::vec3 Renderer::BaryCentric(glm::vec4* vertices, glm::vec2& p)
 	return { 1.0 - (mass.x + mass.y) / mass.z, mass.x / mass.z, mass.y / mass.z };
 }
 
-void Renderer::Draw()
+void Renderer::Draw(uint64_t deltaTime)
 {
 	#pragma region INIT
 	TGAColor red = TGAColor(255, 0, 0, 255);
@@ -195,30 +195,31 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	#pragma endregion
 	
 	#pragma region FACE SHADING
-	glm::vec3 worldCoords[3];
+	glm::vec3 localCoords[3];
 	glm::vec4 clipCoords[3];
 	glm::vec2 uvs[3];
 	for (uint32_t i = 0; i < models.size(); i++)
 	{
 		Model model = models[i];
+		shader->modelMatrix = glm::rotate(shader->modelMatrix, 3.1415926f / 4.0f * 0.1f, glm::vec3(0, 1, 0));
+		shader->invertTransposeModelMatrix = glm::transpose(glm::inverse(shader->modelMatrix));
 		shader->SetUniformSampler(0, model.diffuse());
 		shader->SetUniformSampler(1, model.specular());
 		shader->SetUniformSampler(2, model.normalMap());
 		for (int i = 0; i < model.nfaces(); i++) {
 			for (int j = 0; j < 3; j++)
 			{
-				worldCoords[j] = model.vert(i, j);
+				localCoords[j] = model.vert(i, j);
 				glm::vec3 normal = model.normal(i, j);
 				uvs[j] = model.uv(i, j);
 				normal = glm::normalize(normal);				
-				VertexAttribute vertex { glm::vec4(worldCoords[j].x, worldCoords[j].y, worldCoords[j].z, 1.0), glm::vec3(normal.x, normal.y, normal.z), glm::vec2(uvs[j].x, uvs[j].y)};
+				VertexAttribute vertex { glm::vec4(localCoords[j].x, localCoords[j].y, localCoords[j].z, 1.0), normal, uvs[j] };
 				shader->Vertex(clipCoords[j], vertex, j);
 			}
-			computeTBN(worldCoords, uvs, shader);
-			rasterize(clipCoords, worldCoords);
+			computeTBN(localCoords, uvs, shader);
+			rasterize(clipCoords, localCoords);
 		}
-	}
-	
+	}	
 	frameBuffer.colorAttachment.write_tga_file("color.tga");
 	frameBuffer.depthAttachment.write_tga_file("depth.tga");
 	#pragma endregion

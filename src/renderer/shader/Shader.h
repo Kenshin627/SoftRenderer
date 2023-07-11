@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <tgaimage/tgaimage.h>
 #include "../lights/directionLight/DirectionLight.h"
 
@@ -15,7 +16,9 @@ class Shader
 public:
 	glm::vec3 baryCentricCoords;
 	glm::vec3 baseColor { 0, 0, 0 };
-	glm::mat4 modelViewprojection;
+	glm::mat4 viewprojectionMatrix;
+	glm::mat4 modelMatrix = glm::identity<glm::mat4>();
+	glm::mat3 invertTransposeModelMatrix = glm::identity<glm::mat4>();
 	DirectionLight dLight;
 	glm::vec3 cameraPos;
 	TGAImage diffuseTexture;

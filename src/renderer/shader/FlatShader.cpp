@@ -2,7 +2,7 @@
 
 void FlatShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex)
 {
-	gl_Position = modelViewprojection * vertex.position;
+	gl_Position = viewprojectionMatrix * modelMatrix * vertex.position;
 }
 
 bool FlatShader::Fragment(glm::vec4& gl_FragColor)

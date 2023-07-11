@@ -6,7 +6,7 @@ void TBNShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, un
 	positions[gl_VertexIndex] = vertex.position;
 	normals[gl_VertexIndex] = vertex.normal;
 	uvs[gl_VertexIndex] = vertex.uv;
-	gl_Position = modelViewprojection * vertex.position;
+	gl_Position = viewprojectionMatrix * vertex.position;
 }
 
 //return discard
