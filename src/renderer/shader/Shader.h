@@ -1,6 +1,7 @@
 #pragma once
 #include "../lights/pointLight/PointLight.h"
 #include "../lights/directionLight/DirectionLight.h"
+#include "../lights/spotLight/SpotLight.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <tgaimage/tgaimage.h>
@@ -22,6 +23,7 @@ public:
 	glm::mat3 invertTransposeModelMatrix = glm::identity<glm::mat4>();
 	DirectionLight dLight;
 	PointLight pLight;
+	SpotLight sLight;
 	glm::vec3 cameraPos;
 	TGAImage diffuseTexture;
 	TGAImage specularTexture;

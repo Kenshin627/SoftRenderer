@@ -9,6 +9,8 @@
 #include "shader/BlinnPhongShader.h"
 #include "shader/TBNShader.h"
 #include "shader/PointLightShader.h"
+#include "shader/SpotlightShader.h"
+#include <glm/gtc/type_ptr.hpp>
 
 Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 {
@@ -18,7 +20,8 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	frameBuffer.zBuffer = new float[width * height];
 	frameBuffer.width = width;
 	frameBuffer.height = height;
-	models.emplace_back("source/models/head/head/african_head.obj");
+	//models.emplace_back("source/models/head/head/african_head.obj");
+	models.emplace_back("source/models/floor/floor.obj");
 	//models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
 	//models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
 	//shader = std::make_unique<FlatShader>();
@@ -27,7 +30,8 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	//shader = std::make_unique<PixelShader>();
 	//shader = std::make_unique<BlinnPhongShader>();
 	//shader = std::make_unique<TBNShader>();
-	shader = std::make_unique<PointLightShader>();
+	//shader = std::make_unique<PointLightShader>();
+	shader = std::make_unique<SpotlightShader>();
 	shader->baseColor = { 255,255,255 };
 }
 
@@ -41,9 +45,11 @@ void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const g
 void Renderer::InitLight()
 {
 	dlight = DirectionLight({ 1.0, 1.0, 1.0 }, { 255, 255, 255 });
-	pLight = PointLight({ 0, 5, 2 }, { 255, 255, 255 }, 1.0, 0.09, 0.032);
+	pLight = PointLight({ 0, 1, 0 }, { 255, 255, 255 }, 1.0, 0.09, 0.032);
+	sLight = SpotLight({ 0, 2.0, 0 }, { 0, 1, 0 }, { 255, 255, 255 }, glm::pi<float>() * 5.5f / 180.0f, glm::pi<float>() * 8.5f / 180.0f);
 	shader->dLight = dlight;
 	shader->pLight = pLight;
+	shader->sLight = sLight;
 }
 
 void Renderer::Viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
@@ -202,11 +208,17 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	glm::vec3 localCoords[3];
 	glm::vec4 clipCoords[3];
 	glm::vec2 uvs[3];
+
+	//test-移动光源位置
+	shader->sLight.SetPosition(shader->sLight.Position() + glm::vec3(0.001, 0, 0));
+	//test-移动光源方向
+	//shader->sLight.SetDirection(glm::normalize(shader->sLight.Direction() + glm::vec3(glm::cos(0.01f) * 0.01, glm::sin(0.01f) * 0.01, 0)));
 	for (uint32_t i = 0; i < models.size(); i++)
 	{
 		Model model = models[i];
-		shader->modelMatrix = glm::rotate(shader->modelMatrix, 3.1415926f / 4.0f * 0.1f, glm::vec3(0, 1, 0));
-		shader->invertTransposeModelMatrix = glm::transpose(glm::inverse(shader->modelMatrix));
+	/*	shader->modelMatrix = glm::rotate(shader->modelMatrix, 3.1415926f / 4.0f * 0.1f, glm::vec3(0, 1, 0));
+		shader->invertTransposeModelMatrix = glm::transpose(glm::inverse(shader->modelMatrix));*/
+		
 		shader->SetUniformSampler(0, model.diffuse());
 		shader->SetUniformSampler(1, model.specular());
 		shader->SetUniformSampler(2, model.normalMap());

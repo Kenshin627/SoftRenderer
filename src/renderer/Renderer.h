@@ -4,6 +4,7 @@
 #include "shader/Shader.h"
 #include "lights/directionLight/DirectionLight.h"
 #include "lights/pointLight/PointLight.h"
+#include "lights/spotLight/SpotLight.h"
 #include <glm/glm.hpp>
 #include <tgaimage/tgaimage.h>
 #include <vector>
@@ -67,4 +68,5 @@ private:
 	std::unique_ptr<Shader> shader;
 	DirectionLight dlight;
 	PointLight pLight;
+	SpotLight sLight;
 };
