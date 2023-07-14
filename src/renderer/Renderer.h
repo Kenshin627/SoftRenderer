@@ -64,6 +64,7 @@ private:
 	Camera camera;
 	glm::mat4 viewport;
 	FrameBuffer frameBuffer;	
+	FrameBuffer lightSpaceBuffer;
 	std::vector<Model> models;
 	std::unique_ptr<Shader> shader;
 	DirectionLight dlight;

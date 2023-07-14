@@ -18,8 +18,9 @@ bool BlinnPhongShader::Fragment(glm::vec4& gl_FragColor)
 	glm::vec3 pos = positions[0] * baryCentricCoords.x + positions[1] * baryCentricCoords.y + positions[2] * baryCentricCoords[2];
 	n = glm::normalize(n);
 
-	glm::vec3 h = glm::normalize((dLight.Direction() + glm::normalize(cameraPos - pos)));
-	float diffuseCoeff = glm::max<float>(0.0, glm::dot(n, dLight.Direction()));
+	glm::vec3 lightDir = glm::normalize(-dLight.Direction());
+	glm::vec3 h = glm::normalize((lightDir + glm::normalize(cameraPos - pos)));
+	float diffuseCoeff = glm::max<float>(0.0, glm::dot(n, lightDir));
 	glm::vec3 diffuseColor = Sampler2D(uv, diffuseTexture);
 	float samplerSpecular = Sampler2D(uv, specularTexture).r;
 	float specularCoeff = glm::pow(glm::max<float>(0.0, glm::dot(n, h)), 256) * samplerSpecular;

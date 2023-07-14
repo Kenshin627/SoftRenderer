@@ -11,8 +11,8 @@ int main(int argc, char* argv[])
 {	
 	Window window{ "SoftRenderer", SCREEN_WIDTH, SCREEN_HEIGHT };
 	Renderer renderer(&window, SCREEN_WIDTH, SCREEN_HEIGHT);
-	renderer.InitCamera({ 1, 1, 3 }, { 0,0,0 }, { 0,1,0 }, 1.0f / glm::four_over_pi<float>(), ASPECT, 0.01, 10.0);
 	renderer.InitLight();
+	renderer.InitCamera({ 1, 1, 3 }, { 0,0,0 }, { 0,1,0 }, 1.0f / glm::four_over_pi<float>(), ASPECT, 0.01, 10.0);
 	renderer.Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	window.SetRenderContext(&renderer);
 	window.Run();

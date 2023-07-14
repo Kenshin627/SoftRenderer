@@ -18,12 +18,12 @@ bool SpotlightShader::Fragment(glm::vec4& gl_FragColor)
 	glm::vec2 uv = uvs[0] * baryCentricCoords.x + uvs[1] * baryCentricCoords.y + uvs[2] * baryCentricCoords.z;
 	glm::vec3 pos = positions[0] * baryCentricCoords.x + positions[1] * baryCentricCoords.y + positions[2] * baryCentricCoords[2];
 	n = glm::normalize(n);
+	glm::vec3 lightDir = glm::normalize(-sLight.Direction());
 
-	float diffuseCoeff = glm::max<float>(0.0, glm::dot(n, sLight.Direction()));
+	float diffuseCoeff = glm::max<float>(0.0, glm::dot(n, lightDir));
 	glm::vec3 diffuseColor = Sampler2D(uv, diffuseTexture);
 	
 	glm::vec3 fragmentlightDir = glm::normalize(sLight.Position() - pos);
-	glm::vec3 lightDir = glm::normalize(sLight.Direction());
 	float theta = glm::dot(fragmentlightDir, lightDir);
 	float attenuation = glm::clamp((theta - sLight.GetoutterCos()) / sLight.GetEpsilon(), 0.0f, 1.0f);
 

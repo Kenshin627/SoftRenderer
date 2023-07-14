@@ -12,7 +12,7 @@ void TBNShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, un
 //return discard
 bool TBNShader::Fragment(glm::vec4& gl_FragColor)
 {
-	glm::vec3 lightDir = dLight.Direction();
+	glm::vec3 lightDir = glm::normalize(-dLight.Direction());
 	glm::vec3 lightColor = dLight.Color();
 	glm::vec2 uv = uvs[0] * baryCentricCoords.x + uvs[1] * baryCentricCoords.y + uvs[2] * baryCentricCoords.z;
 	glm::vec3 pos = positions[0] * baryCentricCoords.x + positions[1] * baryCentricCoords.y + positions[2] * baryCentricCoords[2];

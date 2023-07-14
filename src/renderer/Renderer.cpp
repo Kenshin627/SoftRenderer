@@ -16,11 +16,12 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 {
 	presentDevice = device;
 	frameBuffer.colorAttachment = TGAImage(width, height, TGAImage::RGB);
+
 	frameBuffer.depthAttachment = TGAImage(width, height, TGAImage::GRAYSCALE);
 	frameBuffer.zBuffer = new float[width * height];
 	frameBuffer.width = width;
 	frameBuffer.height = height;
-	//models.emplace_back("source/models/head/head/african_head.obj");
+	models.emplace_back("source/models/head/head/african_head.obj");
 	models.emplace_back("source/models/floor/floor.obj");
 	//models.emplace_back("source/models/head/eye_inner/african_head_eye_inner.obj");
 	//models.emplace_back("source/models/head/eye_outter/african_head_eye_outer.obj");
@@ -28,11 +29,12 @@ Renderer::Renderer(Window* device, uint32_t width, uint32_t height)
 	//shader = std::make_unique<GouraudShader>();
 	//shader = std::make_unique<ToonShader>();
 	//shader = std::make_unique<PixelShader>();
-	//shader = std::make_unique<BlinnPhongShader>();
+	shader = std::make_unique<BlinnPhongShader>();
 	//shader = std::make_unique<TBNShader>();
 	//shader = std::make_unique<PointLightShader>();
-	shader = std::make_unique<SpotlightShader>();
+	//shader = std::make_unique<SpotlightShader>();
 	shader->baseColor = { 255,255,255 };
+	lightSpaceBuffer.zBuffer = new float[width * height];
 }
 
 void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up, float fov, float aspectRatio, float near, float far)
@@ -44,9 +46,9 @@ void Renderer::InitCamera(const glm::vec3& eye, const glm::vec3& center, const g
 
 void Renderer::InitLight()
 {
-	dlight = DirectionLight({ 1.0, 1.0, 1.0 }, { 255, 255, 255 });
-	pLight = PointLight({ 0, 1, 0 }, { 255, 255, 255 }, 1.0, 0.09, 0.032);
-	sLight = SpotLight({ 0, 2.0, 0 }, { 0, 1, 0 }, { 255, 255, 255 }, glm::pi<float>() * 5.5f / 180.0f, glm::pi<float>() * 8.5f / 180.0f);
+	dlight = DirectionLight({ -1.0, -1.0, -1.0 }, { 255, 255, 255 });
+	pLight = PointLight({ 0, -1, 0 }, { 255, 255, 255 }, 1.0, 0.09, 0.032);
+	sLight = SpotLight({ 0, 2.0, 0 }, { 0, -1, 0 }, { 255, 255, 255 }, glm::pi<float>() * 5.5f / 180.0f, glm::pi<float>() * 8.5f / 180.0f);
 	shader->dLight = dlight;
 	shader->pLight = pLight;
 	shader->sLight = sLight;
@@ -99,9 +101,9 @@ void Renderer::rasterize(glm::vec4* clipVertices, glm::vec3* localCoords)
 				presentDevice->DrawPoint(x, y, gl_FragColor);
 				frameBuffer.zBuffer[depthIndex] = depth;
 				//绘制到图片
-				/*frameBuffer.colorAttachment.set(point.x, point.y, TGAColor(gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a));
+				frameBuffer.colorAttachment.set(x, y, TGAColor(gl_FragColor.r, gl_FragColor.g, gl_FragColor.b, gl_FragColor.a));
 				float depthVal = LinearDepth(camera.GetNear(), camera.GetFar(), depth) * 255;
-				frameBuffer.depthAttachment.set(point.x, point.y, TGAColor(depthVal, depthVal, depthVal, 255));*/
+				frameBuffer.depthAttachment.set(x, y, TGAColor(depthVal, depthVal, depthVal, 255));
 			}
 		}
 	}
@@ -210,7 +212,7 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 	glm::vec2 uvs[3];
 
 	//test-移动光源位置
-	shader->sLight.SetPosition(shader->sLight.Position() + glm::vec3(0.001, 0, 0));
+	//shader->sLight.SetPosition(shader->sLight.Position() + glm::vec3(0.001, 0, 0));
 	//test-移动光源方向
 	//shader->sLight.SetDirection(glm::normalize(shader->sLight.Direction() + glm::vec3(glm::cos(0.01f) * 0.01, glm::sin(0.01f) * 0.01, 0)));
 	for (uint32_t i = 0; i < models.size(); i++)
@@ -235,7 +237,9 @@ glm::vec2 t2[3] = { glm::vec2{180, 150}, glm::vec2{120, 160}, glm::vec2{130, 180
 			computeTBN(localCoords, uvs, shader);
 			rasterize(clipCoords, localCoords);
 		}
-	}	
+	}
+	frameBuffer.colorAttachment.flip_vertically();
+	frameBuffer.depthAttachment.flip_vertically();
 	frameBuffer.colorAttachment.write_tga_file("color.tga");
 	frameBuffer.depthAttachment.write_tga_file("depth.tga");
 	#pragma endregion
@@ -265,8 +269,8 @@ void Renderer::computeTBN(glm::vec3* positions, glm::vec2* uvs, std::unique_ptr<
 
 float Renderer::LinearDepth(float near, float far, float depth)
 {
-	depth = (depth + 1.0) / 2.0;
-	return (2.0 * near) / (far + near - depth * (far - near));
+	//depth = (depth + 1.0) / 2.0;
+	return (2.0 * near * far) / (far + near - depth * (far - near));
 }
 
 void Renderer::Clear()
