@@ -24,7 +24,9 @@ enum ShaderType
 	RGBSpliter,
 	GrayScale,
 	MosaicArt,
-	NormalMap
+	NormalMap,
+	Flat,
+	DepthMap
 };
 
 enum class ShaderStageType
@@ -69,9 +71,6 @@ public:
 	//shadowMap
 	std::shared_ptr<FrameBuffer> shadowBuffer;
 	glm::mat4 viewport;
-
-	//flatShading
-	float flatShadeIntensity;
 
 	//postProcess
 	glm::vec2 currentPixel;

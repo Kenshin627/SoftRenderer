@@ -48,7 +48,6 @@ public:
 	void DrawLine();
 	void ShadowPass();
 	void DefaultPass();
-	void TrianglePass();
 	void PostProcess();
 	void Clear();
 	void Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, bool present = true);

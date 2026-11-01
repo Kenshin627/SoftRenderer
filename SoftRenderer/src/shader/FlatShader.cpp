@@ -7,10 +7,12 @@ void FlatShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, u
 
 bool FlatShader::Fragment(glm::vec4& gl_FragColor)
 {
-	if (flatShadeIntensity <= 0)
-	{
-		return true;
-	}
-	gl_FragColor = { baseColor.r * flatShadeIntensity, baseColor.g * flatShadeIntensity, baseColor.b * flatShadeIntensity, 255.0 };
+	// flat shading: one constant face normal per triangle (tutorial shading chapter starting point)
+	glm::vec3 e1 = triangle.vertices[1].position - triangle.vertices[0].position;
+	glm::vec3 e2 = triangle.vertices[2].position - triangle.vertices[0].position;
+	glm::vec3 faceNormal = glm::normalize(glm::cross(e1, e2));
+	glm::vec3 lightDir = glm::normalize(-light->Direction());
+	float intensity = glm::max(0.0f, glm::dot(lightDir, faceNormal));
+	gl_FragColor = { baseColor * intensity, 1.0f };
 	return false;
 }

@@ -15,6 +15,8 @@
 #include "../shader/GrayScaleShader.h"
 #include "../shader/MosaicShader.h"
 #include "../shader/NormalMap.h"
+#include "../shader/FlatShader.h"
+#include "../shader/DepthMap.h"
 
 Renderer::Renderer() { }
 
@@ -39,6 +41,8 @@ void Renderer::InitShaders()
 	shaderLibs.insert({ ShaderType::GrayScale, std::make_shared<GrayScaleShader>() });
 	shaderLibs.insert({ ShaderType::MosaicArt, std::make_shared<MosaicShader>(90.0f) });
 	shaderLibs.insert({ ShaderType::NormalMap, std::make_shared<NormalMapShader>() });
+	shaderLibs.insert({ ShaderType::Flat, std::make_shared<FlatShader>() });
+	shaderLibs.insert({ ShaderType::DepthMap, std::make_shared<DepthShader>() });
 }
 
 void Renderer::BindShader(ShaderType type, ShaderStageType stage)
@@ -115,7 +119,7 @@ void Renderer::ShadowPass()
 						localCoords[k] = pos;
 						uvs[k] = uv;
 						VertexAttribute vertex{ pos, normal, uv };
-						activeShader->Vertex(clipCoords[k], vertex, k);
+						activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
 					}
 					Rasterize(clipCoords, shadowPassFrameBuffer, false);
 				}
@@ -165,7 +169,7 @@ void Renderer::DefaultPass()
 						glm::vec2 uv = primative.GetUV(j, k);
 						localPosition[k] = position;
 						uvs[k] = uv;
-						activeShader->Vertex(clipCoords[k], { position, normal, uv }, k);
+						activeShader->Vertex(clipCoords[k], { position, normal, uv }, (uint32_t)k);
 					}
 					ComputeTBN(localPosition, uvs);
 					Rasterize(clipCoords, defaultPassFrameBuffer, !postProcessShader);
@@ -174,13 +178,8 @@ void Renderer::DefaultPass()
 		}
 		//output image
 		defaultPassFrameBuffer->colorAttachment.flip_vertically();
-		//defaultPassFrameBuffer->colorAttachment.write_tga_file("output.tga");
+		defaultPassFrameBuffer->colorAttachment.write_tga_file("output.tga");
 	}
-}
-
-void Renderer::TrianglePass()
-{
-	
 }
 
 void Renderer::PostProcess()
@@ -198,7 +197,7 @@ void Renderer::PostProcess()
 			postProcessShader->currentPixel = glm::vec2(x, y);
 			postProcessShader->Fragment(gl_FragColor);
 			winHandle->DrawPoint(x, y, glm::vec3(gl_FragColor) * 255.0f, false);
-			postProcessBuffer->colorAttachment.set(x, y, TGAColor(gl_FragColor.r * 255, gl_FragColor.g * 255, gl_FragColor.b * 255, 255));
+			postProcessBuffer->colorAttachment.set(x, y, TGAColor((uint8_t)(gl_FragColor.r * 255), (uint8_t)(gl_FragColor.g * 255), (uint8_t)(gl_FragColor.b * 255), 255));
 		}
 	}
 	//output image
@@ -222,26 +221,26 @@ void Renderer::DrawLine()
 	if (activeScene != nullptr)
 	{
 		const std::vector<Model2>& models = activeScene->GetModels();
-		uint32_t modelCount = models.size();
-		for (uint32_t i = 0; i < modelCount; i++)
+		size_t modelCount = models.size();
+		for (size_t i = 0; i < modelCount; i++)
 		{
 			const Model2& model = models[i];
 			const std::vector<Primative> primatives = model.GetAllPrimatives();
-			uint32_t primativeCount = primatives.size();
-			for (uint32_t p = 0; p < primativeCount; p++)
+			size_t primativeCount = primatives.size();
+			for (size_t p = 0; p < primativeCount; p++)
 			{
 				const Primative& primative = primatives[p];
-				uint32_t nface = primative.getNface();
-				for (uint32_t j = 0; j < nface; j++)
+				size_t nface = primative.getNface();
+				for (size_t j = 0; j < nface; j++)
 				{
 					for (uint32_t k = 0; k < 3; k++)
 					{
 						const glm::vec3& v0 = primative.GetPosition(j, k);
 						const glm::vec3& v1 = primative.GetPosition(j, (k + 1) % 3);
-						int x0 = (v0.x + 1.) * viewport.width / 2.;
-						int y0 = (v0.y + 1.) * viewport.height / 2.;
-						int x1 = (v1.x + 1.) * viewport.width / 2.;
-						int y1 = (v1.y + 1.) * viewport.height / 2.;
+						int x0 = (int)((v0.x + 1.0f) * viewport.width / 2.0f);
+						int y0 = (int)((v0.y + 1.0f) * viewport.height / 2.0f);
+						int x1 = (int)((v1.x + 1.0f) * viewport.width / 2.0f);
+						int y1 = (int)((v1.y + 1.0f) * viewport.height / 2.0f);
 						BresenhamLine(x0, y0, x1, y1, { 255, 255, 255 }, winHandle);
 					}
 				}
@@ -254,6 +253,7 @@ void Renderer::Clear()
 {
 	defaultPassFrameBuffer->Reset();
 	shadowPassFrameBuffer->Reset();
+	postProcessBuffer->Reset();
 }
 
 void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, bool present)
@@ -261,32 +261,32 @@ void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& curr
 	glm::vec4 beforeClippedCoords[3] = { viewport.transform * vertices[0], viewport.transform * vertices[1], viewport.transform * vertices[2] };
 	glm::vec4 afterClippedCoords[3] = { beforeClippedCoords[0] / beforeClippedCoords[0].w, beforeClippedCoords[1] / beforeClippedCoords[1].w,beforeClippedCoords[2] / beforeClippedCoords[2].w };
 	BoundingBox bbox = GetBoundingBox(afterClippedCoords);
-	for (uint32_t y = bbox.min.y; y <= bbox.max.y; y++)
+	for (uint32_t y = (uint32_t)bbox.min.y; y <= (uint32_t)bbox.max.y; y++)
 	{
-		for (uint32_t x = bbox.min.x; x <= bbox.max.x; x++)
+		for (uint32_t x = (uint32_t)bbox.min.x; x <= (uint32_t)bbox.max.x; x++)
 		{
-			glm::vec2 p = { x + 0.5, y + 0.5 };
+			glm::vec2 p = { x + 0.5f, y + 0.5f };
 			glm::vec3 clipped_bc = BaryCentric(afterClippedCoords, p);
 			if (clipped_bc.x < 0 || clipped_bc.y < 0 || clipped_bc.z < 0)
 			{
 				continue;
 			}
 			// 1/z = u/z0 + v/z1 + w/z2;
-			float depth = 1.0 / (clipped_bc.x / beforeClippedCoords[0].z + clipped_bc.y / beforeClippedCoords[1].z + clipped_bc.z / beforeClippedCoords[2].z);
-			
+			float depth = 1.0f / (clipped_bc.x / beforeClippedCoords[0].z + clipped_bc.y / beforeClippedCoords[1].z + clipped_bc.z / beforeClippedCoords[2].z);
+
 			uint32_t pixelIndex = x + y * viewport.width;
 			if (depth < currentBuffer->zBuffer[pixelIndex])
 			{
-				activeShader->baryCentric = { depth * clipped_bc.x / beforeClippedCoords[0].z, depth * clipped_bc.y / beforeClippedCoords[1].z, depth * clipped_bc.z / beforeClippedCoords[2].z };				
+				activeShader->baryCentric = { depth * clipped_bc.x / beforeClippedCoords[0].z, depth * clipped_bc.y / beforeClippedCoords[1].z, depth * clipped_bc.z / beforeClippedCoords[2].z };
 				glm::vec4 gl_FragColor;
 				if (!activeShader->Fragment(gl_FragColor))
-				{	
+				{
 					if (present)
 					{
-						winHandle->DrawPoint(p.x, p.y, glm::vec3(gl_FragColor) * 255.0f);
-						
+						winHandle->DrawPoint((int)p.x, (int)p.y, glm::vec3(gl_FragColor) * 255.0f);
+
 					}
-					currentBuffer->colorAttachment.set(p.x, p.y, TGAColor(gl_FragColor.r * 255, gl_FragColor.g * 255, gl_FragColor.b * 255, 255));
+					currentBuffer->colorAttachment.set((int)p.x, (int)p.y, TGAColor((uint8_t)(gl_FragColor.r * 255), (uint8_t)(gl_FragColor.g * 255), (uint8_t)(gl_FragColor.b * 255), 255));
 					currentBuffer->zBuffer[pixelIndex] = depth;
 				}
 			}

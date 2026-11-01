@@ -55,5 +55,3 @@ void Camera::OrthoGraphic(float left, float right, float bottom, float top, floa
 	projection = glm::ortho(left, right, bottom, top, near, far);
 	viewProjection = projection * view;
 }
-
-void Camera::Update() {}
