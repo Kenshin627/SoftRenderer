@@ -25,9 +25,7 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\material\Material.cpp" />
     <ClCompile Include="src\model2\Model2.cpp" />
-    <ClCompile Include="src\model2\ModelLoader.cpp" />
     <ClCompile Include="src\model2\Primative.cpp" />
-    <ClCompile Include="src\model\model.cpp" />
     <ClCompile Include="src\renderer\FrameBuffer.cpp" />
     <ClCompile Include="src\shader\DepthMap.cpp" />
     <ClCompile Include="src\shader\FlatShader.cpp" />
@@ -61,9 +59,7 @@
     <ClInclude Include="src\light\PointLight.h" />
     <ClInclude Include="src\material\Material.h" />
     <ClInclude Include="src\model2\Model2.h" />
-    <ClInclude Include="src\model2\ModelLoader.h" />
     <ClInclude Include="src\model2\Primative.h" />
-    <ClInclude Include="src\model\model.h" />
     <ClInclude Include="src\renderer\FrameBuffer.h" />
     <ClInclude Include="src\shader\DepthMap.h" />
     <ClInclude Include="src\shader\FlatShader.h" />

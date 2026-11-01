@@ -20,8 +20,8 @@ public:
 	const size_t getNface() const { return nface; }
 private:
 	size_t nface;
-	glm::vec3* positions;
-	glm::vec3* normals;
-	glm::vec2* uvs;
+	std::vector<glm::vec3> positions;
+	std::vector<glm::vec3> normals;
+	std::vector<glm::vec2> uvs;
 	std::shared_ptr<Material> material;
 };

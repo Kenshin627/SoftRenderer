@@ -30,9 +30,16 @@ Model2::Model2(const std::string& path)
     ParseMaterial(mats, path.substr(0, slash) + reader_config.mtl_search_path);
     
     for (size_t s = 0; s < shapes.size(); s++) {
-        uint32_t nface = shapes[s].mesh.num_face_vertices.size();
+        uint32_t nface = (uint32_t)shapes[s].mesh.num_face_vertices.size();
         Primative primative { nface };
-        primative.SetMaterial(materials[shapes[s].mesh.material_ids[0]]);
+        // fall back to an empty material when the obj has no mtl / no material id, avoids out-of-range access
+        int matId = shapes[s].mesh.material_ids.empty() ? -1 : shapes[s].mesh.material_ids[0];
+        if (matId >= 0 && matId < (int)materials.size()) {
+            primative.SetMaterial(materials[matId]);
+        }
+        else {
+            primative.SetMaterial(std::make_shared<Material>());
+        }
         size_t index_offset = 0;
         for (size_t f = 0; f < nface; f++) {
             size_t fv = size_t(shapes[s].mesh.num_face_vertices[f]);
@@ -54,7 +61,7 @@ Model2::Model2(const std::string& path)
                 if (idx.texcoord_index >= 0) {
                     tinyobj::real_t tx = attrib.texcoords[2 * size_t(idx.texcoord_index) + 0];
                     tinyobj::real_t ty = attrib.texcoords[2 * size_t(idx.texcoord_index) + 1];
-                    primative.InsertUV(f * 3 + v, tx, 1.0 - ty);
+                    primative.InsertUV(f * 3 + v, tx, 1.0f - ty);
                 }
             }
             index_offset += fv;

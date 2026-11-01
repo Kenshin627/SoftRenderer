@@ -23,6 +23,10 @@ void Shader::SetSampler(uint32_t slot, const std::shared_ptr<Texture>& texture)
 
 glm::vec3 Shader::Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>& texture)
 {
-	glm::vec4 color = texture->Get(uv.x * (texture->GetWidth() - 1.0f), uv.y * (texture->GetHeight() - 1.0f));
+	if (!texture)
+	{
+		return { 1.0f, 1.0f, 1.0f }; // unbound sampler slot falls back to white
+	}
+	glm::vec4 color = texture->Get((uint32_t)(uv.x * (texture->GetWidth() - 1.0f)), (uint32_t)(uv.y * (texture->GetHeight() - 1.0f)));
 	return glm::vec3(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f);
 }

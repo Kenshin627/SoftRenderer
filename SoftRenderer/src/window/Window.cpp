@@ -64,12 +64,12 @@ void Window::DrawPoint(int x, int y, const glm::vec3& color, bool flip)
 	else {
 		sdlPoint = glm::vec2(x, y);
 	}
-	SDL_SetRenderDrawColor(drawHandle, color.r, color.g, color.b, SDL_ALPHA_OPAQUE);
-	SDL_RenderDrawPoint(drawHandle, sdlPoint.x, sdlPoint.y);
+	SDL_SetRenderDrawColor(drawHandle, (Uint8)color.r, (Uint8)color.g, (Uint8)color.b, SDL_ALPHA_OPAQUE);
+	SDL_RenderDrawPoint(drawHandle, (int)sdlPoint.x, (int)sdlPoint.y);
 }
 
 void Window::Clear()
 {
-	SDL_SetRenderDrawColor(drawHandle, clearColor.r, clearColor.g, clearColor.b, SDL_ALPHA_OPAQUE);
+	SDL_SetRenderDrawColor(drawHandle, (Uint8)clearColor.r, (Uint8)clearColor.g, (Uint8)clearColor.b, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(drawHandle);
 }

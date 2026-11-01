@@ -1,10 +1,10 @@
 #include "Primative.h"
 
-Primative::Primative(size_t nface):nface(nface) 
+Primative::Primative(size_t nface):nface(nface)
 {
-	positions = new glm::vec3[nface * 3];
-	normals   = new glm::vec3[nface * 3];
-	uvs       = new glm::vec2[nface * 3];
+	positions.resize(nface * 3);
+	normals.resize(nface * 3);
+	uvs.resize(nface * 3);
 }
 
 const glm::vec3& Primative::GetPosition(size_t nface, size_t triangleVertexIndex) const
