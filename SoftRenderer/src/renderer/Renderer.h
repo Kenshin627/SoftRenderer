@@ -51,7 +51,7 @@ public:
 	void PostProcess();
 	void Clear();
 	void Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, bool present = true);
-	BoundingBox GetBoundingBox(const glm::vec4* vertices);
+	BoundingBox GetBoundingBox(const glm::vec4* vertices, uint32_t width, uint32_t height);
 	glm::vec3 BaryCentric(const glm::vec4* vertices, const glm::vec2& p);
 	void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	void ComputeTBN(glm::vec3* positions, glm::vec2* uvs);
@@ -62,6 +62,7 @@ private:
 	std::shared_ptr<Shader> activeShader;
 	std::shared_ptr<Shader> postProcessShader;
 	Viewport viewport = Viewport();
+	Viewport shadowViewport = Viewport();
 	std::shared_ptr<FrameBuffer> defaultPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> shadowPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> postProcessBuffer;

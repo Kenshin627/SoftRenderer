@@ -6,5 +6,6 @@ void ShadowShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex,
 }
 bool ShadowShader::Fragment(glm::vec4& gl_fragColor)
 {
+	gl_fragColor = { 1.0f, 1.0f, 1.0f, 1.0f }; // depth pass needs no color; set it to avoid reading an uninitialized value
 	return false;
 }

@@ -71,6 +71,7 @@ public:
 	//shadowMap
 	std::shared_ptr<FrameBuffer> shadowBuffer;
 	glm::mat4 viewport;
+	glm::mat4 shadowViewport; //viewport matching the (higher-res) shadow buffer
 
 	//postProcess
 	glm::vec2 currentPixel;

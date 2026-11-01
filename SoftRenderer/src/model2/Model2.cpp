@@ -1,5 +1,6 @@
 #include "Model2.h"
 #include <iostream>
+#include <fstream>
 
 Model2::Model2(const std::string& path)
 {
@@ -29,16 +30,33 @@ Model2::Model2(const std::string& path)
     }
     ParseMaterial(mats, path.substr(0, slash) + reader_config.mtl_search_path);
     
+    // tutorial assets (head/diablo/floor) ship no .mtl: fall back to the tinyrenderer
+    // suffix convention (<model>_diffuse/_nm_tangent/_spec.tga) so they render textured
+    std::shared_ptr<Material> fallbackMaterial = std::make_shared<Material>();
+    if (materials.empty()) {
+        size_t dot = path.find_last_of(".");
+        if (dot != std::string::npos) {
+            std::string base = path.substr(0, dot);
+            auto tryLoad = [&fallbackMaterial](const std::string& file, std::shared_ptr<Texture> Material::* slot) {
+                std::ifstream f(file);
+                if (f.good()) fallbackMaterial.get()->*slot = std::make_shared<Texture>(file.c_str());
+            };
+            tryLoad(base + "_diffuse.tga", &Material::diffuse);
+            tryLoad(base + "_nm_tangent.tga", &Material::normal);
+            tryLoad(base + "_spec.tga", &Material::specular);
+        }
+    }
+
     for (size_t s = 0; s < shapes.size(); s++) {
         uint32_t nface = (uint32_t)shapes[s].mesh.num_face_vertices.size();
         Primative primative { nface };
-        // fall back to an empty material when the obj has no mtl / no material id, avoids out-of-range access
+        // fall back when the obj has no mtl / no material id, avoids out-of-range access
         int matId = shapes[s].mesh.material_ids.empty() ? -1 : shapes[s].mesh.material_ids[0];
         if (matId >= 0 && matId < (int)materials.size()) {
             primative.SetMaterial(materials[matId]);
         }
         else {
-            primative.SetMaterial(std::make_shared<Material>());
+            primative.SetMaterial(fallbackMaterial);
         }
         size_t index_offset = 0;
         for (size_t f = 0; f < nface; f++) {
