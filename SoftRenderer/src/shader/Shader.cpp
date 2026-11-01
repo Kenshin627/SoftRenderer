@@ -16,6 +16,8 @@ void Shader::SetSampler(uint32_t slot, const std::shared_ptr<Texture>& texture)
 		roughnessTexture = texture; break;
 	case 5:
 		metalnessTexture = texture; break;
+	case 6:
+		emissiveTexture = texture; break;
 	default:
 		break;
 	}

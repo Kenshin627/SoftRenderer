@@ -169,7 +169,8 @@ void Renderer::DefaultPass()
 				activeShader->SetSampler(2, primative.GetMaterial()->normal);
 				activeShader->SetSampler(3, primative.GetMaterial()->ao);
 				activeShader->SetSampler(4, primative.GetMaterial()->roughness);
-				activeShader->SetSampler(5, primative.GetMaterial()->metalness);
+					activeShader->SetSampler(5, primative.GetMaterial()->metalness);
+					activeShader->SetSampler(6, primative.GetMaterial()->emissive);
 				for (size_t j = 0; j < nface; j++)
 				{
 					glm::vec3 normals[3];
@@ -247,11 +248,10 @@ void Renderer::PostProcess()
 void Renderer::Draw()
 {
 	ShadowPass();
-	//toon verification (tutorial toon chapter): quantized shading + sobel depth outline
-	BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
-	BindShader(ShaderType::ToonEdge, ShaderStageType::postProcess);
-	//BindShader(ShaderType::BlinnPhongWithShadow, ShaderStageType::defaultRaster);
-	//BindShader(ShaderType::RGBSpliter, ShaderStageType::postProcess);
+	//glow verification (tutorial textures chapter _glow.tga emissive maps)
+	BindShader(ShaderType::BlinnPhongWithShadow, ShaderStageType::defaultRaster);
+	//BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
+	//BindShader(ShaderType::ToonEdge, ShaderStageType::postProcess);
 	DefaultPass();
 	//the scene is static: compute the (expensive) ao once from the first rendered
 	//frame's depth buffer, then apply it per pixel in subsequent frames
