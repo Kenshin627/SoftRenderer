@@ -3,6 +3,7 @@
 FrameBuffer::FrameBuffer(uint32_t width, uint32_t height):width(width), height(height)
 {
 	colorAttachment = TGAImage(width, height, TGAImage::RGB);
+	normalAttachment = TGAImage(width, height, TGAImage::RGB);
 	zBuffer = new float[width * height];
 	Reset();
 }

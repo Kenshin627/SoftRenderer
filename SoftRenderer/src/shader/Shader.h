@@ -64,14 +64,13 @@ public:
 	//baseColor
 	glm::vec3 baseColor = { 1, 1, 1 };
 
-	//TBN
-	glm::vec3 tangent;
-	glm::vec3 biTangent;
-
 	//shadowMap
 	std::shared_ptr<FrameBuffer> shadowBuffer;
 	glm::mat4 viewport;
 	glm::mat4 shadowViewport; //viewport matching the (higher-res) shadow buffer
+
+	//ambient occlusion: per-pixel multiplier filled by the renderer (1 = no occlusion)
+	float aoFactor = 1.0f;
 
 	//postProcess
 	glm::vec2 currentPixel;

@@ -37,6 +37,10 @@ struct BoundingBox
 class Renderer
 {
 public:
+	//ambient occlusion modes (tutorial ao chapter: homework 1 = brute force average of
+	//many directional shadow tests, homework 2 = screen-space ambient occlusion)
+	enum class AoMode { Off, SSAO, BruteForce };
+
 	Renderer();
 	~Renderer() = default;
 	void SetDrawHandle(Window* win);
@@ -54,9 +58,12 @@ public:
 	BoundingBox GetBoundingBox(const glm::vec4* vertices, uint32_t width, uint32_t height);
 	glm::vec3 BaryCentric(const glm::vec4* vertices, const glm::vec2& p);
 	void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
-	void ComputeTBN(glm::vec3* positions, glm::vec2* uvs);
+	void SetAoMode(AoMode mode);
 	void BresenhamLine(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, const glm::vec3& color, Window* winHandle);
 private:
+	void RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr<FrameBuffer>& target);
+	void ComputeSsao();
+	void ComputeBruteForceAo();
 	std::shared_ptr<Scene> activeScene;
 	std::unordered_map<ShaderType, std::shared_ptr<Shader>> shaderLibs;
 	std::shared_ptr<Shader> activeShader;
@@ -67,4 +74,9 @@ private:
 	std::shared_ptr<FrameBuffer> shadowPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> postProcessBuffer;
 	Window* winHandle = nullptr;
+	//ambient occlusion state (static scene: computed once, applied per pixel afterwards)
+	AoMode aoMode = AoMode::Off;
+	bool aoComputed = false;
+	std::vector<float> aoBuffer;
+	std::shared_ptr<FrameBuffer> aoDepthBuffer;
 };
