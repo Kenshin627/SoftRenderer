@@ -46,6 +46,7 @@
     <ClCompile Include="src\shader\Shader.cpp" />
     <ClCompile Include="src\shader\ShadowShader.cpp" />
     <ClCompile Include="src\shader\ToonShader.cpp" />
+    <ClCompile Include="src\shader\ToonEdgeShader.cpp" />
     <ClCompile Include="src\shader\WireFrameShader.cpp" />
     <ClCompile Include="src\texture\Texture.cpp" />
     <ClCompile Include="src\window\Window.cpp" />
@@ -80,6 +81,7 @@
     <ClInclude Include="src\shader\Shader.h" />
     <ClInclude Include="src\shader\ShadowShader.h" />
     <ClInclude Include="src\shader\ToonShader.h" />
+    <ClInclude Include="src\shader\ToonEdgeShader.h" />
     <ClInclude Include="src\shader\WireFrameShader.h" />
     <ClInclude Include="src\texture\Texture.h" />
     <ClInclude Include="src\window\Window.h" />

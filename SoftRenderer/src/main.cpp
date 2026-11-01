@@ -43,8 +43,8 @@ int main(int argc, char* argv[])
 	Renderer renderer;
 	renderer.InitShaders();
 	renderer.SetViewport(0, 0, width, height);
-	//ambient occlusion: SSAO (screen-space) or BruteForce (averaged directional shadow tests)
-	renderer.SetAoMode(Renderer::AoMode::SSAO);
+	//ambient occlusion off for the toon verification scene (tutorial toon image has no ao)
+	renderer.SetAoMode(Renderer::AoMode::Off);
 	renderer.BeginScene(scene);
 	//temp
 	

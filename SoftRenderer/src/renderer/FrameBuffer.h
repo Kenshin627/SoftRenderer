@@ -11,4 +11,5 @@ struct FrameBuffer
 	float* zBuffer = nullptr;
 	uint32_t width;
 	uint32_t height;
+	TGAColor clearColor = { 0, 0, 0, 0 }; // background fill for the color attachment
 };
