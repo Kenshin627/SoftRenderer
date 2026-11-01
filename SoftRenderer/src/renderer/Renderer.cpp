@@ -77,13 +77,16 @@ void Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t heig
 	viewport.width  = width;
 	viewport.height = height;
 	viewport.transform = {
-		{ width / 2, 0, 0, 0 },
-		{ 0, height / 2, 0, 0 },
+		{ width / 2.0f, 0, 0, 0 },
+		{ 0, height / 2.0f, 0, 0 },
 		{ 0, 0, 1, 0 },
-		{ width / 2 + x, height / 2 + y, 0, 1 }
+		{ width / 2.0f + x, height / 2.0f + y, 0, 1 }
 	};
+	//the shadow map runs at higher resolution than the camera framebuffer
+	//(tutorial reference: 8000x8000 shadow buffer for an 800x800 output)
+	shadowViewport.Set(0, 0, width * 4, height * 4);
 	defaultPassFrameBuffer = std::make_unique<FrameBuffer>(width, height);
-	shadowPassFrameBuffer = std::make_unique<FrameBuffer>(width, height);
+	shadowPassFrameBuffer = std::make_unique<FrameBuffer>(width * 4, height * 4);
 	postProcessBuffer = std::make_shared < FrameBuffer>(width, height);
 }
 
@@ -138,6 +141,7 @@ void Renderer::DefaultPass()
 	activeShader->camPos = activeScene->GetCamera()->Position();
 	activeShader->shadowBuffer = shadowPassFrameBuffer;
 	activeShader->viewport = viewport.transform;
+	activeShader->shadowViewport = shadowViewport.transform;
 	glm::vec4 clipCoords[3];
 	glm::vec3 localPosition[3];
 	glm::vec2 uvs[3];
@@ -206,8 +210,9 @@ void Renderer::PostProcess()
 
 void Renderer::Draw()
 {
-	//ShadowPass(winHandle);
-	BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
+	ShadowPass();
+	BindShader(ShaderType::BlinnPhongWithShadow, ShaderStageType::defaultRaster);
+	//BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
 	//BindShader(ShaderType::RGBSpliter, ShaderStageType::postProcess);
 	DefaultPass();
 	if (postProcessShader)
@@ -258,7 +263,11 @@ void Renderer::Clear()
 
 void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, bool present)
 {
-	glm::vec4 beforeClippedCoords[3] = { viewport.transform * vertices[0], viewport.transform * vertices[1], viewport.transform * vertices[2] };
+	//the viewport transform is derived from the target buffer, since the shadow buffer
+	//runs at a higher resolution than the camera framebuffer
+	Viewport bufferViewport;
+	bufferViewport.Set(0, 0, currentBuffer->width, currentBuffer->height);
+	glm::vec4 beforeClippedCoords[3] = { bufferViewport.transform * vertices[0], bufferViewport.transform * vertices[1], bufferViewport.transform * vertices[2] };
 	glm::vec4 afterClippedCoords[3] = { beforeClippedCoords[0] / beforeClippedCoords[0].w, beforeClippedCoords[1] / beforeClippedCoords[1].w,beforeClippedCoords[2] / beforeClippedCoords[2].w };
 
 	// tutorial rasterization chapter: back-face culling + discard triangles covering less than one pixel.
@@ -268,24 +277,28 @@ void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& curr
 	                  - (afterClippedCoords[2].x - afterClippedCoords[0].x) * (afterClippedCoords[1].y - afterClippedCoords[0].y);
 	if (signedArea2 < 1.0f) return;
 
-	BoundingBox bbox = GetBoundingBox(afterClippedCoords);
+	BoundingBox bbox = GetBoundingBox(afterClippedCoords, currentBuffer->width, currentBuffer->height);
 	for (uint32_t y = (uint32_t)bbox.min.y; y <= (uint32_t)bbox.max.y; y++)
 	{
 		for (uint32_t x = (uint32_t)bbox.min.x; x <= (uint32_t)bbox.max.x; x++)
 		{
 			glm::vec2 p = { x + 0.5f, y + 0.5f };
-			glm::vec3 clipped_bc = BaryCentric(afterClippedCoords, p);
-			if (clipped_bc.x < 0 || clipped_bc.y < 0 || clipped_bc.z < 0)
+			glm::vec3 bc_screen = BaryCentric(afterClippedCoords, p);
+			if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
 			{
 				continue;
 			}
-			// 1/z = u/z0 + v/z1 + w/z2;
-			float depth = 1.0f / (clipped_bc.x / beforeClippedCoords[0].z + clipped_bc.y / beforeClippedCoords[1].z + clipped_bc.z / beforeClippedCoords[2].z);
+			//tutorial our_gl rasterize: depth = screen-linear interpolation of the ndc z
+			float depth = bc_screen.x * afterClippedCoords[0].z + bc_screen.y * afterClippedCoords[1].z + bc_screen.z * afterClippedCoords[2].z;
 
-			uint32_t pixelIndex = x + y * viewport.width;
+			uint32_t pixelIndex = x + y * currentBuffer->width;
 			if (depth < currentBuffer->zBuffer[pixelIndex])
 			{
-				activeShader->baryCentric = { depth * clipped_bc.x / beforeClippedCoords[0].z, depth * clipped_bc.y / beforeClippedCoords[1].z, depth * clipped_bc.z / beforeClippedCoords[2].z };
+				//tutorial our_gl rasterize: perspective-correct barycentric for varying
+				//interpolation divides by the clip-space w (not z)
+				glm::vec3 bc_clip = { bc_screen.x / beforeClippedCoords[0].w, bc_screen.y / beforeClippedCoords[1].w, bc_screen.z / beforeClippedCoords[2].w };
+				bc_clip /= (bc_clip.x + bc_clip.y + bc_clip.z);
+				activeShader->baryCentric = bc_clip;
 				glm::vec4 gl_FragColor;
 				if (!activeShader->Fragment(gl_FragColor))
 				{
@@ -302,11 +315,11 @@ void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& curr
 	}
 }
 
-BoundingBox Renderer::GetBoundingBox(const glm::vec4* vertices)
+BoundingBox Renderer::GetBoundingBox(const glm::vec4* vertices, uint32_t width, uint32_t height)
 {
 	BoundingBox bbox;
 	glm::vec2 min { 0, 0 };
-	glm::vec2 max { viewport.width - 1, viewport.height - 1 };
+	glm::vec2 max { width - 1.0f, height - 1.0f };
 	bbox.min = max;
 	bbox.max = min;
 	for (uint32_t i = 0; i < 3; i++)
