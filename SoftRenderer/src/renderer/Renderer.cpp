@@ -20,6 +20,7 @@
 #include "../shader/NormalMap.h"
 #include "../shader/FlatShader.h"
 #include "../shader/DepthMap.h"
+#include "../shader/ToonEdgeShader.h"
 
 Renderer::Renderer() { }
 
@@ -32,6 +33,7 @@ void Renderer::InitShaders()
 {
 	shaderLibs.insert({ ShaderType::Gouraud, std::make_shared< GouraudShader>() });
 	shaderLibs.insert({ ShaderType::Toon, std::make_shared<ToonShader>() });
+	shaderLibs[ShaderType::Toon]->baseColor = { 0.9f, 0.6f, 0.2f }; // solid toon color like the tutorial chapter image
 	shaderLibs.insert({ ShaderType::Pixel, std::make_shared<PixelShader>() });
 	shaderLibs.insert({ ShaderType::WireFrame, std::make_shared<WireFrameShader>(0.02) });
 	shaderLibs.insert({ ShaderType::Point, std::make_shared<PointShader>() });
@@ -46,6 +48,7 @@ void Renderer::InitShaders()
 	shaderLibs.insert({ ShaderType::NormalMap, std::make_shared<NormalMapShader>() });
 	shaderLibs.insert({ ShaderType::Flat, std::make_shared<FlatShader>() });
 	shaderLibs.insert({ ShaderType::DepthMap, std::make_shared<DepthShader>() });
+	shaderLibs.insert({ ShaderType::ToonEdge, std::make_shared<ToonEdgeShader>(0.02f) });
 }
 
 void Renderer::BindShader(ShaderType type, ShaderStageType stage)
@@ -89,6 +92,7 @@ void Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t heig
 	//(tutorial reference: 8000x8000 shadow buffer for an 800x800 output)
 	shadowViewport.Set(0, 0, width * 4, height * 4);
 	defaultPassFrameBuffer = std::make_unique<FrameBuffer>(width, height);
+	defaultPassFrameBuffer->clearColor = { 209, 195, 177, 255 }; // light backdrop like the tutorial renders
 	shadowPassFrameBuffer = std::make_unique<FrameBuffer>(width * 4, height * 4);
 	postProcessBuffer = std::make_shared < FrameBuffer>(width, height);
 }
@@ -209,6 +213,20 @@ void Renderer::PostProcess()
 	//屏幕空间对前一個pass的attachment采样
 	
 	postProcessShader->prePassColorAttachment = defaultPassFrameBuffer->colorAttachment;
+	//the color attachment is already flip_vertically()'d (top-down) while the z buffer keeps
+	//raster orientation (bottom-up): row-flip the depth copy to align with the color
+	{
+		uint32_t fw = defaultPassFrameBuffer->width;
+		uint32_t fh = defaultPassFrameBuffer->height;
+		postProcessShader->prePassDepth.resize(fw * fh);
+		for (uint32_t y = 0; y < fh; y++)
+		{
+			for (uint32_t x = 0; x < fw; x++)
+			{
+				postProcessShader->prePassDepth[x + y * fw] = defaultPassFrameBuffer->zBuffer[x + (fh - 1 - y) * fw];
+			}
+		}
+	}
 	uint32_t height = postProcessShader->prePassColorAttachment.get_height();
 	uint32_t width = postProcessShader->prePassColorAttachment.get_width();
 	glm::vec4 gl_FragColor;
@@ -229,8 +247,10 @@ void Renderer::PostProcess()
 void Renderer::Draw()
 {
 	ShadowPass();
-	BindShader(ShaderType::BlinnPhongWithShadow, ShaderStageType::defaultRaster);
-	//BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
+	//toon verification (tutorial toon chapter): quantized shading + sobel depth outline
+	BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
+	BindShader(ShaderType::ToonEdge, ShaderStageType::postProcess);
+	//BindShader(ShaderType::BlinnPhongWithShadow, ShaderStageType::defaultRaster);
 	//BindShader(ShaderType::RGBSpliter, ShaderStageType::postProcess);
 	DefaultPass();
 	//the scene is static: compute the (expensive) ao once from the first rendered

@@ -26,7 +26,8 @@ enum ShaderType
 	MosaicArt,
 	NormalMap,
 	Flat,
-	DepthMap
+	DepthMap,
+	ToonEdge
 };
 
 enum class ShaderStageType
@@ -75,4 +76,5 @@ public:
 	//postProcess
 	glm::vec2 currentPixel;
 	TGAImage prePassColorAttachment;
+	std::vector<float> prePassDepth; // depth buffer of the previous pass (for sobel outlines / ao)
 };

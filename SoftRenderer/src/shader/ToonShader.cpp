@@ -13,26 +13,19 @@ bool ToonShader::Fragment(glm::vec4& gl_FragColor)
 {
 	//重心坐标插值计算当前像素点光照强度
 	float pixelIntensity = glm::max<float>(0.0, glm::dot(vertexIntensity, baryCentric));
-	if (pixelIntensity >= 0.9)
+	//tutorial toon chapter quantization: three hard bands on a solid color (no texture)
+	if (pixelIntensity > 0.66f)
 	{
-		pixelIntensity = 1.0;
+		pixelIntensity = 1.0f;
 	}
-	else if (pixelIntensity >= 0.6)
+	else if (pixelIntensity > 0.33f)
 	{
-		pixelIntensity = 0.8;
-	}
-	else if (pixelIntensity >= 0.4)
-	{
-		pixelIntensity = 0.6;
-	}
-	else if (pixelIntensity >= 0.2)
-	{
-		pixelIntensity = 0.4;
+		pixelIntensity = 0.66f;
 	}
 	else
 	{
-		pixelIntensity = 0.1;
+		pixelIntensity = 0.33f;
 	}
-	gl_FragColor = { baseColor.r * pixelIntensity, baseColor.g * pixelIntensity, baseColor.b * pixelIntensity, 255 };
+	gl_FragColor = { baseColor.r * pixelIntensity, baseColor.g * pixelIntensity, baseColor.b * pixelIntensity, 1.0f };
 	return false;
 }
