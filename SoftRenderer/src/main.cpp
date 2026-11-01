@@ -43,8 +43,8 @@ int main(int argc, char* argv[])
 	Renderer renderer;
 	renderer.InitShaders();
 	renderer.SetViewport(0, 0, width, height);
-	//ambient occlusion off for the toon verification scene (tutorial toon image has no ao)
-	renderer.SetAoMode(Renderer::AoMode::Off);
+	//ambient occlusion on for the glow scene (emissive must stay unoccluded)
+	renderer.SetAoMode(Renderer::AoMode::SSAO);
 	renderer.BeginScene(scene);
 	//temp
 	

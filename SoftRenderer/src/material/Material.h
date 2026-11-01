@@ -13,4 +13,5 @@ public:
 	std::shared_ptr<Texture> normal;
 	std::shared_ptr<Texture> roughness;
 	std::shared_ptr<Texture> metalness;
+	std::shared_ptr<Texture> emissive; // _glow.tga, self-illumination unaffected by lighting
 };

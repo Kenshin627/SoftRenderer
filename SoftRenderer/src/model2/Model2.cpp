@@ -44,6 +44,7 @@ Model2::Model2(const std::string& path)
             tryLoad(base + "_diffuse.tga", &Material::diffuse);
             tryLoad(base + "_nm_tangent.tga", &Material::normal);
             tryLoad(base + "_spec.tga", &Material::specular);
+            tryLoad(base + "_glow.tga", &Material::emissive);
         }
     }
 

@@ -60,6 +60,7 @@ public:
 	std::shared_ptr<Texture> aoTexture;//slot 3
 	std::shared_ptr<Texture> roughnessTexture;//slot 4
 	std::shared_ptr<Texture> metalnessTexture;//slot 5
+	std::shared_ptr<Texture> emissiveTexture;//slot 6 (_glow.tga)
 
 
 	//baseColor

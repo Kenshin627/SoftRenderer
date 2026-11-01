@@ -64,7 +64,12 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	//readable without the flat white wash of an unmodulated ambient
 	glm::vec3 ambientColor = 0.4f * Sampler2D(uv, diffuseTexture);
 
-	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor) * lightColor * aoFactor;
+	//emissive: _glow.tga self-illumination, unaffected by shadow/ao/light color (tutorial
+	//textures chapter mentions the _glow.tga incandescence maps); null falls back to black
+	//unlike albedo samplers (white fallback would white out untextured scenes)
+	glm::vec3 emissiveColor = emissiveTexture ? Sampler2D(uv, emissiveTexture) : glm::vec3(0.0f);
+
+	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor) * lightColor * aoFactor + emissiveColor;
 	color.r = glm::min(1.0f, color.r);
 	color.g = glm::min(1.0f, color.g);
 	color.b = glm::min(1.0f, color.b);
