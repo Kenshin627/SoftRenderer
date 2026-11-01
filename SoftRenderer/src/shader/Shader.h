@@ -69,6 +69,9 @@ public:
 	glm::mat4 viewport;
 	glm::mat4 shadowViewport; //viewport matching the (higher-res) shadow buffer
 
+	//ambient occlusion: per-pixel multiplier filled by the renderer (1 = no occlusion)
+	float aoFactor = 1.0f;
+
 	//postProcess
 	glm::vec2 currentPixel;
 	TGAImage prePassColorAttachment;

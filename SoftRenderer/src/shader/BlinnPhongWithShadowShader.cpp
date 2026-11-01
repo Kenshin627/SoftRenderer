@@ -64,7 +64,7 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	//readable without the flat white wash of an unmodulated ambient
 	glm::vec3 ambientColor = 0.4f * Sampler2D(uv, diffuseTexture);
 
-	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor) * lightColor;
+	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor) * lightColor * aoFactor;
 	color.r = glm::min(1.0f, color.r);
 	color.g = glm::min(1.0f, color.g);
 	color.b = glm::min(1.0f, color.b);
