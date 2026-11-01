@@ -260,6 +260,14 @@ void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& curr
 {
 	glm::vec4 beforeClippedCoords[3] = { viewport.transform * vertices[0], viewport.transform * vertices[1], viewport.transform * vertices[2] };
 	glm::vec4 afterClippedCoords[3] = { beforeClippedCoords[0] / beforeClippedCoords[0].w, beforeClippedCoords[1] / beforeClippedCoords[1].w,beforeClippedCoords[2] / beforeClippedCoords[2].w };
+
+	// tutorial rasterization chapter: back-face culling + discard triangles covering less than one pixel.
+	// signed doubled area via 2D cross product (same convention as BaryCentric):
+	// counter-clockwise (front-facing) > 0, clockwise (back-facing) < 0, |area| < 1px => sub-pixel.
+	float signedArea2 = (afterClippedCoords[1].x - afterClippedCoords[0].x) * (afterClippedCoords[2].y - afterClippedCoords[0].y)
+	                  - (afterClippedCoords[2].x - afterClippedCoords[0].x) * (afterClippedCoords[1].y - afterClippedCoords[0].y);
+	if (signedArea2 < 1.0f) return;
+
 	BoundingBox bbox = GetBoundingBox(afterClippedCoords);
 	for (uint32_t y = (uint32_t)bbox.min.y; y <= (uint32_t)bbox.max.y; y++)
 	{
