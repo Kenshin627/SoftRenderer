@@ -17,13 +17,13 @@ int main(int argc, char* argv[])
 	//scene->LoadModel("resource/models/Gun/Cerberus.obj");
 	//scene->LoadModel("resource/models/david/david.obj");
 
-	//diablo + floor (tutorial assets, for shadow verification)
-	scene->LoadModel("resource/models/diablo/d3.obj");
-	scene->LoadModel("resource/models/floor_big/floor_big.obj");
+	//head (tutorial asset, tangent-space verification)
+	scene->LoadModel("resource/models/head/head/african_head.obj");
+	scene->LoadModel("resource/models/head/eye_inner/african_head_eye_inner.obj");
+	scene->LoadModel("resource/models/head/eye_outter/african_head_eye_outer.obj");
 
-	//frontal light (camera side, slightly right and above): the front of the model is lit
-	//and the cast shadow falls onto the large floor behind it
-	scene->InitLight({ 0.2f, -0.5f, -0.85f }, { 1, 1, 1 });
+	//light from upper-right-front like the tutorial renders
+	scene->InitLight({ -1, -1, -1 }, { 1, 1, 1 });
 
 	//david
 	/*scene->InitCamera({ -0.5f, 0.3f, 2.8f }, { 0, 0.2, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);*/
@@ -31,9 +31,8 @@ int main(int argc, char* argv[])
 	//FlightHelmet
 	//scene->InitCamera({ 0.6f, 0.8f, 0.75f }, { 0, 0.3, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
 
-	//diablo + floor: camera pulled back so the enlarged floor (±4) stays entirely
-	//in front of the near plane (this pipeline has no near-plane clipping yet)
-	scene->InitCamera({ 1.0f, 1.4f, 5.0f }, { 0, -0.2, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
+	//head
+	scene->InitCamera({ 0.5f, 0.3f, 1.8f }, { 0, 0.05f, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
 
 	//MANDO
 	//scene->InitCamera({ -0.5f, 0.5f, 0.6f }, { 0, 0.2f, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);

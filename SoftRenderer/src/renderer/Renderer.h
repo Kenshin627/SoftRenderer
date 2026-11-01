@@ -54,7 +54,6 @@ public:
 	BoundingBox GetBoundingBox(const glm::vec4* vertices, uint32_t width, uint32_t height);
 	glm::vec3 BaryCentric(const glm::vec4* vertices, const glm::vec2& p);
 	void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
-	void ComputeTBN(glm::vec3* positions, glm::vec2* uvs);
 	void BresenhamLine(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, const glm::vec3& color, Window* winHandle);
 private:
 	std::shared_ptr<Scene> activeScene;

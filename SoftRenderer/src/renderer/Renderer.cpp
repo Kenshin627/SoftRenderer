@@ -166,16 +166,32 @@ void Renderer::DefaultPass()
 				activeShader->SetSampler(5, primative.GetMaterial()->metalness);
 				for (size_t j = 0; j < nface; j++)
 				{
+					glm::vec3 normals[3];
 					for (size_t k = 0; k < 3; k++)
 					{
-						glm::vec3 position = primative.GetPosition(j, k);
-						glm::vec3 normal = primative.GetNormal(j, k);
-						glm::vec2 uv = primative.GetUV(j, k);
-						localPosition[k] = position;
-						uvs[k] = uv;
-						activeShader->Vertex(clipCoords[k], { position, normal, uv }, (uint32_t)k);
+						localPosition[k] = primative.GetPosition(j, k);
+						normals[k] = primative.GetNormal(j, k);
+						uvs[k] = primative.GetUV(j, k);
 					}
-					ComputeTBN(localPosition, uvs);
+					// per-face tangent frame (t b) = U^-1 * E (tutorial tangent chapter);
+					// face corners are duplicated per triangle, so all three corners share
+					// it and the barycentric interpolation carries it like any other varying
+					glm::vec3 e1 = localPosition[1] - localPosition[0];
+					glm::vec3 e2 = localPosition[2] - localPosition[0];
+					glm::vec2 d1 = uvs[1] - uvs[0];
+					glm::vec2 d2 = uvs[2] - uvs[0];
+					float uvDet = d1.x * d2.y - d2.x * d1.y;
+					glm::vec3 tangent = e1, bitangent = e2;
+					if (std::abs(uvDet) > 1e-8f)
+					{
+						tangent = (e1 * d2.y - e2 * d1.y) / uvDet;
+						bitangent = (e2 * d1.x - e1 * d2.x) / uvDet;
+					}
+					for (size_t k = 0; k < 3; k++)
+					{
+						VertexAttribute vertex{ localPosition[k], normals[k], uvs[k], tangent, bitangent };
+						activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
+					}
 					Rasterize(clipCoords, defaultPassFrameBuffer, !postProcessShader);
 				}
 			}			
@@ -352,28 +368,6 @@ glm::vec3 Renderer::BaryCentric(const glm::vec4* vertices, const glm::vec2& p)
 		return { -1, 1, 1 };
 	}
 	return { 1.0f - (uvw.x + uvw.y) / uvw.z, uvw.x / uvw.z, uvw.y / uvw.z };
-}
-
-void Renderer::ComputeTBN(glm::vec3* positions, glm::vec2* uvs)
-{
-	glm::vec3 e1 = positions[1] - positions[0];
-	glm::vec3 e2 = positions[2] - positions[0];
-	glm::vec2 deltaUV1 = uvs[1] - uvs[0];
-	glm::vec2 deltaUV2 = uvs[2] - uvs[0];
-	float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-	glm::vec3 tangent;
-	tangent.x = f * (deltaUV2.y * e1.x - deltaUV1.y * e2.x);
-	tangent.y = f * (deltaUV2.y * e1.y - deltaUV1.y * e2.y);
-	tangent.z = f * (deltaUV2.y * e1.z - deltaUV1.y * e2.z);
-	tangent = glm::normalize(tangent);
-
-	glm::vec3 bitangent;
-	bitangent.x = f * (-deltaUV2.x * e1.x + deltaUV1.x * e2.x);
-	bitangent.y = f * (-deltaUV2.x * e1.y + deltaUV1.x * e2.y);
-	bitangent.z = f * (-deltaUV2.x * e1.z + deltaUV1.x * e2.z);
-	bitangent = glm::normalize(bitangent);
-	activeShader->tangent = tangent;
-	activeShader->biTangent = bitangent;
 }
 
 void Renderer::BresenhamLine(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, const glm::vec3& color, Window* winHandle)

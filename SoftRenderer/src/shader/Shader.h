@@ -64,10 +64,6 @@ public:
 	//baseColor
 	glm::vec3 baseColor = { 1, 1, 1 };
 
-	//TBN
-	glm::vec3 tangent;
-	glm::vec3 biTangent;
-
 	//shadowMap
 	std::shared_ptr<FrameBuffer> shadowBuffer;
 	glm::mat4 viewport;
