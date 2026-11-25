@@ -3,7 +3,7 @@
 
 struct FrameBuffer
 {
-	FrameBuffer(uint32_t width, uint32_t height);
+	FrameBuffer(uint32_t width, uint32_t height, bool depthOnly = false);
 	~FrameBuffer();
 	void Reset();
 	TGAImage colorAttachment;

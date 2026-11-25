@@ -16,6 +16,8 @@ void Shader::SetSampler(uint32_t slot, const std::shared_ptr<Texture>& texture)
 		roughnessTexture = texture; break;
 	case 5:
 		metalnessTexture = texture; break;
+	case 6:
+		emissiveTexture = texture; break;
 	default:
 		break;
 	}
@@ -27,6 +29,32 @@ glm::vec3 Shader::Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>&
 	{
 		return { 1.0f, 1.0f, 1.0f }; // unbound sampler slot falls back to white
 	}
-	glm::vec4 color = texture->Get((uint32_t)(uv.x * (texture->GetWidth() - 1.0f)), (uint32_t)(uv.y * (texture->GetHeight() - 1.0f)));
-	return glm::vec3(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f);
+	// Clamp the exact upper edge and repeat UVs outside the unit tile.
+	auto texel = [](float u, int size) {
+		float wrapped = u == 1.0f ? 1.0f : u - glm::floor(u);
+		return static_cast<uint32_t>(glm::min(wrapped * size, float(size - 1)));
+	};
+	if (texture->GetWidth() <= 0 || texture->GetHeight() <= 0) return glm::vec3(0);
+	glm::vec4 color = texture->Get(texel(uv.x, texture->GetWidth()), texel(uv.y, texture->GetHeight()));
+	return glm::vec3(color) / 255.0f;
+}
+
+glm::vec3 Shader::SurfaceNormal(const glm::vec2& uv)
+{
+	const auto& v = triangle.vertices;
+	const auto& w = baryCentric;
+	glm::vec3 n = glm::normalize(w.x * v[0].normal + w.y * v[1].normal + w.z * v[2].normal);
+	if (normalSource == NormalSource::Vertex) return n;
+	if (normalSource == NormalSource::Object || (normalSource == NormalSource::Auto && !tbnNormalTexture))
+	{
+		if (!objectNormalTexture) return n;
+		glm::vec3 local = 2.0f * Sampler2D(uv, objectNormalTexture) - 1.0f;
+		return glm::normalize(itModel * local);
+	}
+	if (!tbnNormalTexture) return n;
+	glm::vec3 t = w.x * v[0].tangent + w.y * v[1].tangent + w.z * v[2].tangent;
+	glm::vec3 b = w.x * v[0].bitangent + w.y * v[1].bitangent + w.z * v[2].bitangent;
+	if (glm::dot(t, t) < 1e-12f || glm::dot(b, b) < 1e-12f) return n;
+	glm::vec3 local = 2.0f * Sampler2D(uv, tbnNormalTexture) - 1.0f;
+	return glm::normalize(glm::mat3(glm::normalize(t), glm::normalize(b), n) * local);
 }

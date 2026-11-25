@@ -7,7 +7,6 @@
 #include <unordered_map>
 #include <glm/gtc/matrix_transform.hpp>
 
-class Window;
 struct Viewport
 {
 	Viewport() = default;
@@ -17,10 +16,10 @@ struct Viewport
 		height = h;
 		transform =
 		{
-			{ width / 2,     0,              0, 0 },
-			{ 0,             height / 2,     0, 0 },
+			{ width / 2.0f,     0,              0, 0 },
+			{ 0,             height / 2.0f,     0, 0 },
 			{ 0,             0,              1, 0 },
-			{ width / 2 + x, height / 2 + y, 0, 1 }
+			{ width / 2.0f + x, height / 2.0f + y, 0, 1 }
 		};
 	}
 	uint32_t width = 0;
@@ -43,7 +42,6 @@ public:
 
 	Renderer();
 	~Renderer() = default;
-	void SetDrawHandle(Window* win);
 	void InitShaders();
 	void BindShader(ShaderType type, ShaderStageType stage);
 	void BeginScene(const std::shared_ptr<Scene>& scene);
@@ -54,15 +52,22 @@ public:
 	void DefaultPass();
 	void PostProcess();
 	void Clear();
-	void Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, bool present = true);
+	void Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer);
 	BoundingBox GetBoundingBox(const glm::vec4* vertices, uint32_t width, uint32_t height);
 	glm::vec3 BaryCentric(const glm::vec4* vertices, const glm::vec2& p);
 	void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	void SetAoMode(AoMode mode);
-	void BresenhamLine(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, const glm::vec3& color, Window* winHandle);
+	void SetNormalSource(NormalSource source) { normalSource = source; }
+	void SetScanline(bool enabled) { scanline = enabled; }
+	const TGAImage& Image() const;
+	bool SavePasses() const;
+	bool SaveAo(const char* path) const;
 private:
+	void BresenhamLine(glm::ivec2 a, glm::ivec2 b);
+	void RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& target);
 	void RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr<FrameBuffer>& target);
 	void ComputeSsao();
+	void BlurAo();
 	void ComputeBruteForceAo();
 	std::shared_ptr<Scene> activeScene;
 	std::unordered_map<ShaderType, std::shared_ptr<Shader>> shaderLibs;
@@ -73,7 +78,9 @@ private:
 	std::shared_ptr<FrameBuffer> defaultPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> shadowPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> postProcessBuffer;
-	Window* winHandle = nullptr;
+	ShaderType surface = ShaderType::Toon;
+	NormalSource normalSource = NormalSource::Auto;
+	bool scanline = false;
 	//ambient occlusion state (static scene: computed once, applied per pixel afterwards)
 	AoMode aoMode = AoMode::Off;
 	bool aoComputed = false;

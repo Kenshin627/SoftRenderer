@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "Triangle.h"
-#include "../window/Window.h"
+#include <algorithm>
+#include <array>
 #include <random>
 #include <iostream>
 #include <limits>
@@ -24,11 +25,6 @@
 
 Renderer::Renderer() { }
 
-void Renderer::SetDrawHandle(Window* w)
-{
-	winHandle = w;
-}
-
 void Renderer::InitShaders()
 {
 	shaderLibs.insert({ ShaderType::Gouraud, std::make_shared< GouraudShader>() });
@@ -46,6 +42,11 @@ void Renderer::InitShaders()
 	shaderLibs.insert({ ShaderType::GrayScale, std::make_shared<GrayScaleShader>() });
 	shaderLibs.insert({ ShaderType::MosaicArt, std::make_shared<MosaicShader>(90.0f) });
 	shaderLibs.insert({ ShaderType::NormalMap, std::make_shared<NormalMapShader>() });
+	shaderLibs[ShaderType::Albedo] = std::make_shared<MaterialPreviewShader>(false);
+	shaderLibs[ShaderType::Emission] = std::make_shared<MaterialPreviewShader>(true);
+	shaderLibs[ShaderType::Lit] = shaderLibs.at(ShaderType::BlinnPhongWithShadow);
+	shaderLibs[ShaderType::Phong] = std::make_shared<BlinnPhongWithShadowShader>(true);
+	shaderLibs[ShaderType::BarycentricColor] = std::make_shared<BarycentricShader>();
 	shaderLibs.insert({ ShaderType::Flat, std::make_shared<FlatShader>() });
 	shaderLibs.insert({ ShaderType::DepthMap, std::make_shared<DepthShader>() });
 	shaderLibs.insert({ ShaderType::ToonEdge, std::make_shared<ToonEdgeShader>(0.02f) });
@@ -53,24 +54,20 @@ void Renderer::InitShaders()
 
 void Renderer::BindShader(ShaderType type, ShaderStageType stage)
 {
-	auto res = shaderLibs.find(type);
-	if (res != shaderLibs.cend())
+	if (stage == ShaderStageType::defaultRaster)
 	{
-		auto curShader = res->second;
-		if (stage == ShaderStageType::defaultRaster)
-		{
-			activeShader = curShader;
-		}
-		else
-		{
-			postProcessShader = curShader;
-		}
+		surface = type;
+	}
+	else
+	{
+		postProcessShader = type == ShaderType::deActive ? nullptr : shaderLibs.at(type);
 	}
 }
 
 void Renderer::BeginScene(const std::shared_ptr<Scene>& scene)
 {
 	activeScene = scene;
+	SetAoMode(aoMode);
 }
 
 void Renderer::EndScene()
@@ -80,39 +77,30 @@ void Renderer::EndScene()
 
 void Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
-	viewport.width  = width;
-	viewport.height = height;
-	viewport.transform = {
-		{ width / 2.0f, 0, 0, 0 },
-		{ 0, height / 2.0f, 0, 0 },
-		{ 0, 0, 1, 0 },
-		{ width / 2.0f + x, height / 2.0f + y, 0, 1 }
-	};
+	viewport.Set(x, y, width, height);
 	//the shadow map runs at higher resolution than the camera framebuffer
 	//(tutorial reference: 8000x8000 shadow buffer for an 800x800 output)
 	shadowViewport.Set(0, 0, width * 4, height * 4);
 	defaultPassFrameBuffer = std::make_unique<FrameBuffer>(width, height);
 	defaultPassFrameBuffer->clearColor = { 209, 195, 177, 255 }; // light backdrop like the tutorial renders
-	shadowPassFrameBuffer = std::make_unique<FrameBuffer>(width * 4, height * 4);
+	shadowPassFrameBuffer.reset();
+	SetAoMode(aoMode);
 	postProcessBuffer = std::make_shared < FrameBuffer>(width, height);
 }
 
 void Renderer::ShadowPass()
 {
-	BindShader(ShaderType::Shadow, ShaderStageType::defaultRaster);
-	activeShader->light = activeScene->GetLight();
-	activeShader->model = glm::identity<glm::mat4>();
-	activeShader->itModel = glm::transpose(glm::inverse(activeShader->model));
-	activeShader->viewProjection = activeScene->GetLight()->GetLightSpace().ViewProjection();
-	RenderSceneDepth(activeShader->viewProjection, shadowPassFrameBuffer);
+	if (!shadowPassFrameBuffer)
+		shadowPassFrameBuffer = std::make_shared<FrameBuffer>(shadowViewport.width, shadowViewport.height, true);
+	shadowPassFrameBuffer->Reset();
+	RenderSceneDepth(activeScene->GetLight()->GetLightSpace().ViewProjection(), shadowPassFrameBuffer);
 }
 
 void Renderer::RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr<FrameBuffer>& target)
 {
-	if (activeScene == nullptr)
-	{
-		return;
-	}
+	activeShader = shaderLibs.at(ShaderType::Shadow);
+	activeShader->model = glm::mat4(1.0f);
+	activeShader->viewProjection = viewProjection;
 	glm::vec4 clipCoords[3];
 	const std::vector<Model2>& models = activeScene->GetModels();
 	size_t modelCount = models.size();
@@ -131,7 +119,7 @@ void Renderer::RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr
 					VertexAttribute vertex{ primative.GetPosition(j, k), primative.GetNormal(j, k), primative.GetUV(j, k) };
 					activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
 				}
-				Rasterize(clipCoords, target, false);
+				Rasterize(clipCoords, target);
 			}
 		}
 	}
@@ -139,72 +127,71 @@ void Renderer::RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr
 
 void Renderer::DefaultPass()
 {
+	activeShader = shaderLibs.at(surface);
+	activeShader->normalSource = normalSource;
 	activeShader->light = activeScene->GetLight();
 	activeShader->pointLights = activeScene->GetPointLights();
 	activeShader->model = glm::identity<glm::mat4>();
 	activeShader->itModel = glm::mat3(glm::transpose(glm::inverse(activeShader->model)));
 	activeShader->viewProjection = activeScene->GetCamera()->ViewProjection();
 	activeShader->camPos = activeScene->GetCamera()->Position();
-	activeShader->shadowBuffer = shadowPassFrameBuffer;
+	activeShader->shadowBuffer = surface == ShaderType::BlinnPhongWithShadow ? shadowPassFrameBuffer : nullptr;
 	activeShader->viewport = viewport.transform;
 	activeShader->shadowViewport = shadowViewport.transform;
 	glm::vec4 clipCoords[3];
 	glm::vec3 localPosition[3];
 	glm::vec2 uvs[3];
-	if (activeScene != nullptr)
+	const std::vector<Model2>& models = activeScene->GetModels();
+	size_t modelCount = models.size();
+	for (size_t i = 0; i < modelCount; i++)
 	{
-		const std::vector<Model2>& models = activeScene->GetModels();
-		size_t modelCount = models.size();
-		for (size_t i = 0; i < modelCount; i++)
+		const Model2& model = models[i];
+		const std::vector<Primative>& primatives = model.GetAllPrimatives();
+		size_t primativeCount = primatives.size();
+		for (size_t p = 0; p < primativeCount; p++)
 		{
-			const Model2& model = models[i];
-			const std::vector<Primative>& primatives = model.GetAllPrimatives();
-			size_t primativeCount = primatives.size();
-			for (size_t p = 0; p < primativeCount; p++)
+			const Primative& primative = primatives[p];
+			size_t nface = primative.getNface();
+			activeShader->SetSampler(0, primative.GetMaterial()->diffuse);
+			activeShader->SetSampler(1, primative.GetMaterial()->specular);
+			activeShader->SetSampler(2, primative.GetMaterial()->normal);
+			activeShader->SetSampler(3, primative.GetMaterial()->ao);
+			activeShader->SetSampler(4, primative.GetMaterial()->roughness);
+			activeShader->SetSampler(5, primative.GetMaterial()->metalness);
+			activeShader->objectNormalTexture = primative.GetMaterial()->objectNormal;
+			activeShader->SetSampler(6, primative.GetMaterial()->emissive);
+			for (size_t j = 0; j < nface; j++)
 			{
-				const Primative& primative = primatives[p];
-				size_t nface = primative.getNface();
-				activeShader->SetSampler(0, primative.GetMaterial()->diffuse);
-				activeShader->SetSampler(1, primative.GetMaterial()->specular);
-				activeShader->SetSampler(2, primative.GetMaterial()->normal);
-				activeShader->SetSampler(3, primative.GetMaterial()->ao);
-				activeShader->SetSampler(4, primative.GetMaterial()->roughness);
-				activeShader->SetSampler(5, primative.GetMaterial()->metalness);
-				for (size_t j = 0; j < nface; j++)
+				glm::vec3 normals[3];
+				for (size_t k = 0; k < 3; k++)
 				{
-					glm::vec3 normals[3];
-					for (size_t k = 0; k < 3; k++)
-					{
-						localPosition[k] = primative.GetPosition(j, k);
-						normals[k] = primative.GetNormal(j, k);
-						uvs[k] = primative.GetUV(j, k);
-					}
-					// per-face tangent frame (t b) = U^-1 * E (tutorial tangent chapter);
-					// face corners are duplicated per triangle, so all three corners share
-					// it and the barycentric interpolation carries it like any other varying
-					glm::vec3 e1 = localPosition[1] - localPosition[0];
-					glm::vec3 e2 = localPosition[2] - localPosition[0];
-					glm::vec2 d1 = uvs[1] - uvs[0];
-					glm::vec2 d2 = uvs[2] - uvs[0];
-					float uvDet = d1.x * d2.y - d2.x * d1.y;
-					glm::vec3 tangent = e1, bitangent = e2;
-					if (std::abs(uvDet) > 1e-8f)
-					{
-						tangent = (e1 * d2.y - e2 * d1.y) / uvDet;
-						bitangent = (e2 * d1.x - e1 * d2.x) / uvDet;
-					}
-					for (size_t k = 0; k < 3; k++)
-					{
-						VertexAttribute vertex{ localPosition[k], normals[k], uvs[k], tangent, bitangent };
-						activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
-					}
-					Rasterize(clipCoords, defaultPassFrameBuffer, !postProcessShader);
+					localPosition[k] = primative.GetPosition(j, k);
+					normals[k] = primative.GetNormal(j, k);
+					uvs[k] = primative.GetUV(j, k);
 				}
-			}			
+				// per-face tangent frame (t b) = U^-1 * E (tutorial tangent chapter);
+				// face corners are duplicated per triangle, so all three corners share
+				// it and the barycentric interpolation carries it like any other varying
+				glm::vec3 e1 = localPosition[1] - localPosition[0];
+				glm::vec3 e2 = localPosition[2] - localPosition[0];
+				glm::vec2 d1 = uvs[1] - uvs[0];
+				glm::vec2 d2 = uvs[2] - uvs[0];
+				float uvDet = d1.x * d2.y - d2.x * d1.y;
+				glm::vec3 tangent(0.0f), bitangent(0.0f);
+				if (std::abs(uvDet) > 1e-8f)
+				{
+					tangent = (e1 * d2.y - e2 * d1.y) / uvDet;
+					// OBJ v was flipped for image addressing. Restore its sign for the tangent frame.
+					bitangent = (e1 * d2.x - e2 * d1.x) / uvDet;
+				}
+				for (size_t k = 0; k < 3; k++)
+				{
+					VertexAttribute vertex{ localPosition[k], normals[k], uvs[k], tangent, bitangent };
+					activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
+				}
+				Rasterize(clipCoords, defaultPassFrameBuffer);
+			}
 		}
-		//output image
-		defaultPassFrameBuffer->colorAttachment.flip_vertically();
-		defaultPassFrameBuffer->colorAttachment.write_tga_file("output.tga");
 	}
 }
 
@@ -236,42 +223,75 @@ void Renderer::PostProcess()
 		{
 			postProcessShader->currentPixel = glm::vec2(x, y);
 			postProcessShader->Fragment(gl_FragColor);
-			winHandle->DrawPoint(x, y, glm::vec3(gl_FragColor) * 255.0f, false);
 			postProcessBuffer->colorAttachment.set(x, y, TGAColor((uint8_t)(gl_FragColor.r * 255), (uint8_t)(gl_FragColor.g * 255), (uint8_t)(gl_FragColor.b * 255), 255));
 		}
 	}
-	//output image
-	postProcessBuffer->colorAttachment.write_tga_file("postProcess.tga");
+}
+
+const TGAImage& Renderer::Image() const
+{
+	return (postProcessShader ? postProcessBuffer : defaultPassFrameBuffer)->colorAttachment;
+}
+
+bool Renderer::SavePasses() const
+{
+	return defaultPassFrameBuffer->colorAttachment.write_tga_file("output.tga")
+		&& (!postProcessShader || postProcessBuffer->colorAttachment.write_tga_file("postProcess.tga"));
+}
+
+bool Renderer::SaveAo(const char* path) const
+{
+	if (!aoComputed) return false;
+	TGAImage image(viewport.width, viewport.height, TGAImage::GRAYSCALE);
+	for (uint32_t y = 0; y < viewport.height; ++y)
+		for (uint32_t x = 0; x < viewport.width; ++x)
+			image.set(x, viewport.height - 1 - y, TGAColor(int(255 * aoBuffer[x + y * viewport.width]), 1));
+	return image.write_tga_file(path);
 }
 
 void Renderer::Draw()
 {
-	ShadowPass();
-	//toon verification (tutorial toon chapter): quantized shading + sobel depth outline
-	BindShader(ShaderType::Toon, ShaderStageType::defaultRaster);
-	BindShader(ShaderType::ToonEdge, ShaderStageType::postProcess);
-	//BindShader(ShaderType::BlinnPhongWithShadow, ShaderStageType::defaultRaster);
-	//BindShader(ShaderType::RGBSpliter, ShaderStageType::postProcess);
-	DefaultPass();
-	//the scene is static: compute the (expensive) ao once from the first rendered
-	//frame's depth buffer, then apply it per pixel in subsequent frames
-	if (aoMode != AoMode::Off && !aoComputed)
+	if (!activeScene) return;
+	Clear();
+	if (surface == ShaderType::Lines)
 	{
-		std::cout << "computing ambient occlusion (one-shot for the static scene)..." << std::endl;
-		if (aoMode == AoMode::SSAO)
-		{
-			ComputeSsao();
-		}
-		else
-		{
-			ComputeBruteForceAo();
-		}
-		aoComputed = true;
+		DrawLine();
 	}
-	if (postProcessShader)
+	else
 	{
-		PostProcess();
+		if (surface == ShaderType::BlinnPhongWithShadow) ShadowPass();
+		DefaultPass();
+		if (aoMode != AoMode::Off && !aoComputed)
+		{
+			if (aoMode == AoMode::SSAO) ComputeSsao();
+			else ComputeBruteForceAo();
+			aoComputed = true;
+			defaultPassFrameBuffer->Reset();
+			DefaultPass();
+		}
 	}
+	if (surface == ShaderType::DepthMap)
+	{
+		const auto& fb = *defaultPassFrameBuffer;
+		float nearDepth = 1.0f, farDepth = -1.0f;
+		for (uint32_t i = 0; i < fb.width * fb.height; ++i)
+		{
+			float z = fb.zBuffer[i];
+			if (z == std::numeric_limits<float>::max()) continue;
+			nearDepth = glm::min(nearDepth, z);
+			farDepth = glm::max(farDepth, z);
+		}
+		for (uint32_t y = 0; y < fb.height; ++y)
+			for (uint32_t x = 0; x < fb.width; ++x)
+			{
+				float z = fb.zBuffer[x + fb.width * y];
+				if (z == std::numeric_limits<float>::max()) continue;
+				auto gray = static_cast<uint8_t>(255 * (z - nearDepth) / glm::max(farDepth - nearDepth, 1e-6f));
+				defaultPassFrameBuffer->colorAttachment.set(x, y, TGAColor(gray, gray, gray, 255));
+			}
+	}
+	defaultPassFrameBuffer->colorAttachment.flip_vertically();
+	if (postProcessShader) PostProcess();
 }
 
 void Renderer::SetAoMode(AoMode mode)
@@ -281,37 +301,37 @@ void Renderer::SetAoMode(AoMode mode)
 	aoBuffer.clear();
 }
 
+namespace {
+float planeDistance(const glm::vec4& p, int plane)
+{
+	return p.w + ((plane % 2 == 0) ? p[plane / 2] : -p[plane / 2]);
+}
+}
+
 void Renderer::DrawLine()
 {
-	if (activeScene != nullptr)
-	{
-		const std::vector<Model2>& models = activeScene->GetModels();
-		size_t modelCount = models.size();
-		for (size_t i = 0; i < modelCount; i++)
-		{
-			const Model2& model = models[i];
-			const std::vector<Primative> primatives = model.GetAllPrimatives();
-			size_t primativeCount = primatives.size();
-			for (size_t p = 0; p < primativeCount; p++)
-			{
-				const Primative& primative = primatives[p];
-				size_t nface = primative.getNface();
-				for (size_t j = 0; j < nface; j++)
+	const auto vp = activeScene->GetCamera()->ViewProjection();
+	for (const auto& model : activeScene->GetModels())
+		for (const auto& mesh : model.GetAllPrimatives())
+			for (size_t face = 0; face < mesh.getNface(); ++face)
+				for (int edge = 0; edge < 3; ++edge)
 				{
-					for (uint32_t k = 0; k < 3; k++)
+					auto a = vp * glm::vec4(mesh.GetPosition(face, edge), 1.0f);
+					auto b = vp * glm::vec4(mesh.GetPosition(face, (edge + 1) % 3), 1.0f);
+					bool visible = true;
+					for (int plane = 0; plane < 6; ++plane)
 					{
-						const glm::vec3& v0 = primative.GetPosition(j, k);
-						const glm::vec3& v1 = primative.GetPosition(j, (k + 1) % 3);
-						int x0 = (int)((v0.x + 1.0f) * viewport.width / 2.0f);
-						int y0 = (int)((v0.y + 1.0f) * viewport.height / 2.0f);
-						int x1 = (int)((v1.x + 1.0f) * viewport.width / 2.0f);
-						int y1 = (int)((v1.y + 1.0f) * viewport.height / 2.0f);
-						BresenhamLine(x0, y0, x1, y1, { 255, 255, 255 }, winHandle);
+						float da = planeDistance(a, plane), db = planeDistance(b, plane);
+						if (da < 0 && db < 0) { visible = false; break; }
+						if (da < 0 || db < 0)
+						{
+							auto hit = glm::mix(a, b, da / (da - db));
+							if (da < 0) a = hit; else b = hit;
+						}
 					}
+					if (visible && a.w > 0 && b.w > 0)
+						BresenhamLine(glm::ivec2(viewport.transform * (a / a.w)), glm::ivec2(viewport.transform * (b / b.w)));
 				}
-			}
-		}
-	}
 }
 
 void Renderer::ComputeSsao()
@@ -326,7 +346,6 @@ void Renderer::ComputeSsao()
 	constexpr uint32_t sampleCount = 128; // samples in the hemisphere
 	constexpr float depthBias = 2e-4f;    // NDC bias against self-occlusion acne
 	constexpr float rangeCheck = 0.01f;   // NDC range check: skip much-closer false occluders
-	constexpr float maxDarkening = 0.4f;
 
 	FrameBuffer& fb = *defaultPassFrameBuffer;
 	const uint32_t w = fb.width;
@@ -336,11 +355,6 @@ void Renderer::ComputeSsao()
 	aoBuffer.assign(w * h, 1.0f);
 	std::mt19937 rng(12345u);
 	std::uniform_real_distribution<float> unit(0.0f, 1.0f);
-	auto smoothstep = [](float e0, float e1, float x)
-	{
-		float t = glm::clamp((x - e0) / (e1 - e0), 0.0f, 1.0f);
-		return t * t * (3.0f - 2.0f * t);
-	};
 
 	for (uint32_t y = 0; y < h; y++)
 	{
@@ -380,78 +394,30 @@ void Renderer::ComputeSsao()
 				if (d + depthBias < q.z) vote++;                        // surface closer than the sample => occluded
 			}
 			float occlusion = voters > 0.0f ? vote / voters : 0.0f;
-			aoBuffer[idx] = smoothstep(0.0f, 1.0f, 1.0f - occlusion * maxDarkening);
+			aoBuffer[idx] = 1.0f - occlusion;
 		}
 	}
 
 	//the chapter asks how to reduce the noise: a couple of box blur passes over the ao map
-	auto boxBlur = [w, h](const std::vector<float>& src, std::vector<float>& dst)
-	{
-		for (uint32_t y = 0; y < h; y++)
-		{
-			for (uint32_t x = 0; x < w; x++)
-			{
-				float sum = 0.0f;
-				int n = 0;
-				for (int dy = -1; dy <= 1; dy++)
-				{
-					for (int dx = -1; dx <= 1; dx++)
-					{
-						int nx = (int)x + dx;
-						int ny = (int)y + dy;
-						if (nx < 0 || nx >= (int)w || ny < 0 || ny >= (int)h) continue;
-						sum += src[nx + ny * w];
-						n++;
-					}
-				}
-				dst[x + y * w] = sum / n;
-			}
-		}
-	};
-	std::vector<float> tmp(w * h);
-	boxBlur(aoBuffer, tmp);
-	boxBlur(tmp, aoBuffer);
-
-	//debug dump: ao statistics and grayscale map
-	{
-		float mn = 1.0f, mx = 0.0f, sum = 0.0f;
-		uint32_t n = 0;
-		for (uint32_t i = 0; i < w * h; i++)
-		{
-			if (fb.zBuffer[i] == std::numeric_limits<float>::max()) continue;
-			mn = glm::min(mn, aoBuffer[i]);
-			mx = glm::max(mx, aoBuffer[i]);
-			sum += aoBuffer[i];
-			n++;
-		}
-		std::cout << "ssao stats: n=" << n << " min=" << mn << " mean=" << (sum / n) << " max=" << mx << std::endl;
-		TGAImage aoImg(w, h, TGAImage::GRAYSCALE);
-		for (uint32_t y = 0; y < h; y++)
-			for (uint32_t x = 0; x < w; x++)
-			{
-				uint8_t v = (uint8_t)(aoBuffer[x + y * w] * 255);
-				aoImg.set((int)x, (int)y, TGAColor(v, 1));
-			}
-		aoImg.write_tga_file("ao_map.tga");
-	}
+	BlurAo();
 }
 
 void Renderer::ComputeBruteForceAo()
 {
 	//tutorial ao chapter, homework 1: average the binary visibility of many virtual
 	//lights spread over the sphere (the chapter teaser averages ~1000 camera positions)
-	constexpr uint32_t directionCount = 32;
+	constexpr uint32_t directionCount = 256;
 	constexpr float depthBias = 5e-3f;
 	const float PI = 3.14159265358979f;
 
 	FrameBuffer& fb = *defaultPassFrameBuffer;
 	const uint32_t w = fb.width;
 	const uint32_t h = fb.height;
-	const uint32_t aw = w / 2;
+	const uint32_t aw = glm::max(1u, w / 2);
 	const uint32_t ah = h / 2;
 	if (!aoDepthBuffer || aoDepthBuffer->width != aw || aoDepthBuffer->height != ah)
 	{
-		aoDepthBuffer = std::make_shared<FrameBuffer>(aw, ah);
+		aoDepthBuffer = std::make_shared<FrameBuffer>(aw, ah, true);
 	}
 	Viewport aoViewport;
 	aoViewport.Set(0, 0, aw, ah);
@@ -462,7 +428,7 @@ void Renderer::ComputeBruteForceAo()
 	for (uint32_t i = 0; i < directionCount; i++)
 	{
 		float t = (i + 0.5f) / directionCount;
-		float phi = 2.0f * PI * i * (0.6180339887498949f * 2.0f); // golden angle spiral
+		float phi = 2.0f * PI * i * (0.6180339887498949f); // golden angle spiral
 		float cosTheta = 1.0f - 2.0f * t;
 		float sinTheta = glm::sqrt(glm::max(0.0f, 1.0f - cosTheta * cosTheta));
 		directions.push_back({ sinTheta * glm::cos(phi), cosTheta, sinTheta * glm::sin(phi) });
@@ -473,13 +439,9 @@ void Renderer::ComputeBruteForceAo()
 	for (const glm::vec3& dir : directions)
 	{
 		//depth pass from this direction (half resolution ortho camera like the shadow pass)
-		Camera aoCamera(-dir * 2.0f, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f });
+		Camera aoCamera(-dir * 4.0f, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f });
 		aoCamera.OrthoGraphic(-2.0f, 2.0f, -2.0f, 2.0f, 0.01f, 10.0f);
 		aoDepthBuffer->Reset();
-		BindShader(ShaderType::Shadow, ShaderStageType::defaultRaster);
-		activeShader->model = glm::identity<glm::mat4>();
-		activeShader->itModel = glm::transpose(glm::inverse(activeShader->model));
-		activeShader->viewProjection = aoCamera.ViewProjection();
 		RenderSceneDepth(aoCamera.ViewProjection(), aoDepthBuffer);
 		glm::mat4 lightScreen = aoViewport.transform * aoCamera.ViewProjection();
 
@@ -497,7 +459,8 @@ void Renderer::ComputeBruteForceAo()
 				TGAColor nc = fb.normalAttachment.get((int)x, (int)y);
 				glm::vec3 normal = glm::normalize((glm::vec3(nc.r, nc.g, nc.b) / 255.0f) * 2.0f - 1.0f);
 				//skip directions the surface faces away from
-				if (glm::dot(normal, -dir) <= 0.0f) continue;
+				float cosine = glm::dot(normal, -dir);
+				if (cosine <= 0.0f) continue;
 				glm::vec4 q = lightScreen * worldPos;
 				q /= q.w;
 				valid[idx]++;
@@ -507,7 +470,11 @@ void Renderer::ComputeBruteForceAo()
 					continue;
 				}
 				float d = aoDepthBuffer->zBuffer[(uint32_t)q.x + (uint32_t)q.y * aw];
-				if (d + depthBias >= q.z) visible[idx] += 1.0f; // lit (same test as the shadow shader)
+				// Allow for the depth change across a half texel on a tilted surface.
+				float slope = glm::sqrt(glm::max(0.0f, 1.0f - cosine * cosine)) / glm::max(cosine, 0.01f);
+				float texel = 4.0f / glm::min(aw, ah);
+				float bias = depthBias + (2.0f / (10.0f - 0.01f)) * texel * slope;
+				if (d + bias >= q.z) visible[idx] += 1.0f; // lit (same test as the shadow shader)
 			}
 		}
 	}
@@ -519,30 +486,13 @@ void Renderer::ComputeBruteForceAo()
 		if (valid[i] > 0.0f) aoBuffer[i] = visible[i] / valid[i];
 	}
 
-	//debug dump: ao statistics and grayscale map
-	{
-		float mn = 1.0f, mx = 0.0f, sum = 0.0f;
-		uint32_t n = 0;
-		for (uint32_t i = 0; i < w * h; i++)
-		{
-			if (valid[i] <= 0.0f) continue;
-			mn = glm::min(mn, aoBuffer[i]);
-			mx = glm::max(mx, aoBuffer[i]);
-			sum += aoBuffer[i];
-			n++;
-		}
-		std::cout << "brute-force ao stats: n=" << n << " min=" << mn << " mean=" << (sum / n) << " max=" << mx << std::endl;
-		TGAImage aoImg(w, h, TGAImage::GRAYSCALE);
-		for (uint32_t y = 0; y < h; y++)
-			for (uint32_t x = 0; x < w; x++)
-			{
-				uint8_t v = (uint8_t)(aoBuffer[x + y * w] * 255);
-				aoImg.set((int)x, (int)y, TGAColor(v, 1));
-			}
-		aoImg.write_tga_file("ao_map.tga");
-	}
+	//smooth the directional estimate a little (the reference averages ~1000 directions)
+	BlurAo();
+}
 
-	//smooth the 32-direction estimate a little (the reference averages ~1000 directions)
+void Renderer::BlurAo()
+{
+	const auto w = viewport.width, h = viewport.height;
 	auto boxBlur = [w, h](const std::vector<float>& src, std::vector<float>& dst)
 	{
 		for (uint32_t y = 0; y < h; y++)
@@ -569,16 +519,58 @@ void Renderer::ComputeBruteForceAo()
 	std::vector<float> tmp(w * h);
 	boxBlur(aoBuffer, tmp);
 	boxBlur(tmp, aoBuffer);
+
+
 }
 
 void Renderer::Clear()
 {
 	defaultPassFrameBuffer->Reset();
-	shadowPassFrameBuffer->Reset();
 	postProcessBuffer->Reset();
 }
 
-void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, bool present)
+void Renderer::Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>& target)
+{
+	// Clip before perspective division. Carry weights in the original triangle
+	// so every shader keeps using its own three vertex outputs after clipping.
+	struct Corner { glm::vec4 clip; glm::vec3 weights; };
+	std::array<Corner, 9> first, second;
+	Corner* polygon = first.data();
+	Corner* next = second.data();
+	const glm::mat3 identity(1.0f);
+	int count = 3;
+	for (int i = 0; i < count; ++i) polygon[i] = { vertices[i], identity[i] };
+	for (int plane = 0; plane < 6; ++plane)
+	{
+		bool inside = true;
+		for (int i = 0; i < count; ++i) inside &= planeDistance(polygon[i].clip, plane) >= 0;
+		if (inside) continue;
+		int output = 0;
+		for (int i = 0; i < count; ++i)
+		{
+			const auto& a = polygon[(i + count - 1) % count];
+			const auto& b = polygon[i];
+			float da = planeDistance(a.clip, plane), db = planeDistance(b.clip, plane);
+			if ((da < 0 && db > 0) || (da > 0 && db < 0))
+			{
+				float t = da / (da - db);
+				next[output++] = { glm::mix(a.clip, b.clip, t), glm::mix(a.weights, b.weights, t) };
+			}
+			if (db >= 0) next[output++] = b;
+		}
+		if (output < 3) return;
+		std::swap(polygon, next);
+		count = output;
+	}
+	for (int i = 1; i + 1 < count; ++i)
+	{
+		glm::vec4 clip[] = { polygon[0].clip, polygon[i].clip, polygon[i+1].clip };
+		glm::mat3 weights(polygon[0].weights, polygon[i].weights, polygon[i+1].weights);
+		RasterizeTriangle(clip, weights, target);
+	}
+}
+
+void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& currentBuffer)
 {
 	//the viewport transform is derived from the target buffer, since the shadow buffer
 	//runs at a higher resolution than the camera framebuffer
@@ -597,7 +589,23 @@ void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& curr
 	BoundingBox bbox = GetBoundingBox(afterClippedCoords, currentBuffer->width, currentBuffer->height);
 	for (uint32_t y = (uint32_t)bbox.min.y; y <= (uint32_t)bbox.max.y; y++)
 	{
-		for (uint32_t x = (uint32_t)bbox.min.x; x <= (uint32_t)bbox.max.x; x++)
+		int left = int(bbox.min.x), right = int(bbox.max.x);
+		if (scanline)
+		{
+			// Restrict this row to the horizontal span between intersected edges.
+			float lo = bbox.max.x + 1.0f, hi = bbox.min.x - 1.0f;
+			float py = y + 0.5f;
+			for (int edge = 0; edge < 3; ++edge)
+			{
+				auto a = afterClippedCoords[edge], b = afterClippedCoords[(edge + 1) % 3];
+				if (a.y == b.y || py < glm::min(a.y,b.y) || py > glm::max(a.y,b.y)) continue;
+				float hit = a.x + (py - a.y) / (b.y - a.y) * (b.x - a.x);
+				lo = glm::min(lo, hit); hi = glm::max(hi, hit);
+			}
+			left = glm::max(left, int(glm::floor(lo - 0.5f)));
+			right = glm::min(right, int(glm::ceil(hi - 0.5f)));
+		}
+		for (int x = left; x <= right; ++x)
 		{
 			glm::vec2 p = { x + 0.5f, y + 0.5f };
 			glm::vec3 bc_screen = BaryCentric(afterClippedCoords, p);
@@ -611,23 +619,24 @@ void Renderer::Rasterize(glm::vec4* vertices, std::shared_ptr<FrameBuffer>& curr
 			uint32_t pixelIndex = x + y * currentBuffer->width;
 			if (depth < currentBuffer->zBuffer[pixelIndex])
 			{
+				if (currentBuffer.get() != defaultPassFrameBuffer.get())
+				{
+					currentBuffer->zBuffer[pixelIndex] = depth;
+					continue;
+				}
 				//tutorial our_gl rasterize: perspective-correct barycentric for varying
 				//interpolation divides by the clip-space w (not z)
 				glm::vec3 bc_clip = { bc_screen.x / beforeClippedCoords[0].w, bc_screen.y / beforeClippedCoords[1].w, bc_screen.z / beforeClippedCoords[2].w };
 				bc_clip /= (bc_clip.x + bc_clip.y + bc_clip.z);
+				bc_clip = sourceWeights * bc_clip;
 				activeShader->baryCentric = bc_clip;
 				//per-pixel ambient occlusion multiplier (full-res buffer only)
 				activeShader->aoFactor = (!aoBuffer.empty() && currentBuffer->width == viewport.width && currentBuffer->height == viewport.height) ? aoBuffer[pixelIndex] : 1.0f;
 				glm::vec4 gl_FragColor;
 				if (!activeShader->Fragment(gl_FragColor))
 				{
-					if (present)
-					{
-						winHandle->DrawPoint((int)p.x, (int)p.y, glm::vec3(gl_FragColor) * 255.0f);
-
-					}
 					//cache the interpolated world normal for the ao passes (only needed on the main buffer)
-					if (currentBuffer.get() == defaultPassFrameBuffer.get())
+					if (aoMode != AoMode::Off && !aoComputed)
 					{
 						glm::vec3 n = glm::normalize(bc_clip.x * activeShader->triangle.vertices[0].normal + bc_clip.y * activeShader->triangle.vertices[1].normal + bc_clip.z * activeShader->triangle.vertices[2].normal);
 						currentBuffer->normalAttachment.set((int)p.x, (int)p.y, TGAColor((uint8_t)((n.x * 0.5f + 0.5f) * 255), (uint8_t)((n.y * 0.5f + 0.5f) * 255), (uint8_t)((n.z * 0.5f + 0.5f) * 255), 255));
@@ -679,42 +688,17 @@ glm::vec3 Renderer::BaryCentric(const glm::vec4* vertices, const glm::vec2& p)
 	return { 1.0f - (uvw.x + uvw.y) / uvw.z, uvw.x / uvw.z, uvw.y / uvw.z };
 }
 
-void Renderer::BresenhamLine(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, const glm::vec3& color, Window* winHandle)
+void Renderer::BresenhamLine(glm::ivec2 a, glm::ivec2 b)
 {
-	bool steep = false;
-	if (abs(static_cast<int>(x1 - x0)) < abs(static_cast<int>(y1 - y0)))
+	int dx = std::abs(b.x - a.x), dy = -std::abs(b.y - a.y);
+	int sx = a.x < b.x ? 1 : -1, sy = a.y < b.y ? 1 : -1;
+	int error = dx + dy;
+	for (;;)
 	{
-		std::swap(x0, y0);
-		std::swap(x1, y1);
-		steep = true;
-	}
-
-	if (x0 > x1)
-	{
-		std::swap(x0, x1);
-		std::swap(y0, y1);
-	}
-
-	int dx = x1 - x0;
-	int dy = y1 - y0;
-	int derror2 = std::abs(dy) * 2;
-	int error2 = 0;
-	int y = y0;
-	for (uint32_t x = x0; x <= x1; x++)
-	{
-		if (steep)
-		{
-			winHandle->DrawPoint(y, x, color);
-		}
-		else
-		{
-			winHandle->DrawPoint(x, y, color);
-		}
-		error2 += derror2;
-		if (error2 > dx)
-		{
-			y += (y1 > y0 ? 1 : -1);
-			error2 -= dx * 2;
-		}
+		defaultPassFrameBuffer->colorAttachment.set(a.x, a.y, TGAColor(38, 46, 56, 255));
+		if (a == b) break;
+		int twice = 2 * error;
+		if (twice >= dy) { error += dy; a.x += sx; }
+		if (twice <= dx) { error += dx; a.y += sy; }
 	}
 }

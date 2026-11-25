@@ -1,59 +1,136 @@
 #include "window/Window.h"
-#include <glm/gtc/type_ptr.hpp>
+#include <iostream>
+#include <map>
+#include <sstream>
+#include <stdexcept>
+
+namespace {
+const std::map<std::string, ShaderType> modes = {
+	{"albedo", Albedo}, {"emission", Emission}, {"lit", Lit}, {"wire", Lines}, {"barycentric", BarycentricColor}, {"flat", Flat}, {"gouraud", Gouraud},
+	{"smooth", Pixel}, {"phong", Phong}, {"blinn", BlinnPhong}, {"normal", NormalMap},
+	{"shadow", BlinnPhongWithShadow}, {"toon", Toon}, {"depth", DepthMap}, {"pbr", PBR}
+};
+const std::map<std::string, ShaderType> effects = {
+	{"none", deActive}, {"outline", ToonEdge}, {"gray", GrayScale}, {"rgb", RGBSpliter}, {"mosaic", MosaicArt}
+};
+const std::map<std::string, NormalSource> normals = {
+	{"auto", NormalSource::Auto}, {"vertex", NormalSource::Vertex}, {"object", NormalSource::Object}, {"tangent", NormalSource::Tangent}
+};
+const std::map<std::string, Renderer::AoMode> occlusion = {
+	{"off", Renderer::AoMode::Off}, {"ssao", Renderer::AoMode::SSAO}, {"brute", Renderer::AoMode::BruteForce}
+};
+
+template<class T>
+T choice(const std::map<std::string, T>& choices, const std::string& value)
+{
+	auto found = choices.find(value);
+	if (found == choices.end()) throw std::runtime_error("unknown choice: " + value);
+	return found->second;
+}
+
+void usage()
+{
+	std::cout << "SoftRenderer [--scene diablo|head|helmet | --model file.obj ...] [--size WIDTHxHEIGHT] [--output frame.tga]\n"
+		"  --mode albedo|emission|lit|wire|barycentric|flat|gouraud|smooth|phong|blinn|normal|shadow|toon|depth|pbr\n"
+		"  --normals auto|vertex|object|tangent   --raster bbox|scanline\n"
+		"  --ao off|ssao|brute (phong/shadow)     --ao-map visibility.tga\n"
+		"  --post none|outline|gray|rgb|mosaic   (toon defaults to outline)\n";
+}
+}
+
 int main(int argc, char* argv[])
 {
-	uint32_t width = 1920;
-	uint32_t height = 1080;
-	float aspect = (float)width / height;
+	try
+	{
+		std::string sceneName, output, aoOutput;
+		std::vector<std::string> models;
+		ShaderType mode = Toon, post = deActive;
+		NormalSource normal = NormalSource::Auto;
+		auto ao = Renderer::AoMode::Off;
+		bool explicitPost = false, scanline = false;
+		int width = 1920, height = 1080;
+		for (int i = 1; i < argc; ++i)
+		{
+			std::string key = argv[i];
+			if (key == "--help") { usage(); return 0; }
+			if (++i == argc) throw std::runtime_error("missing value for " + key);
+			std::string value = argv[i];
+			if (key == "--scene") sceneName = value;
+			else if (key == "--model") models.push_back(value);
+			else if (key == "--mode") mode = choice(modes, value);
+			else if (key == "--post") { post = choice(effects, value); explicitPost = true; }
+			else if (key == "--normals") normal = choice(normals, value);
+			else if (key == "--ao") ao = choice(occlusion, value);
+			else if (key == "--ao-map") aoOutput = value;
+			else if (key == "--output") output = value;
+			else if (key == "--raster")
+			{
+				if (value != "scanline" && value != "bbox") throw std::runtime_error("unknown rasterizer: " + value);
+				scanline = value == "scanline";
+			}
+			else if (key == "--size")
+			{
+				char x; std::istringstream in(value);
+				if (!(in >> width >> x >> height) || x != 'x' || !in.eof() ||
+					width < 2 || height < 2 || width > 4096 || height > 4096)
+					throw std::runtime_error("expected WIDTHxHEIGHT, each 2..4096");
+			}
+			else throw std::runtime_error("unknown option: " + key);
+		}
+		if (ao != Renderer::AoMode::Off && mode != Phong && mode != BlinnPhongWithShadow)
+			throw std::runtime_error("--ao requires --mode phong or shadow");
+		if (!aoOutput.empty() && ao == Renderer::AoMode::Off) throw std::runtime_error("--ao-map requires --ao ssao or brute");
+		if (!explicitPost && mode == Toon) post = ToonEdge;
 
-	//1.Scene
-	std::shared_ptr<Scene> scene = std::make_shared<Scene>();
-	//scene->LoadModel("resource/models/head/head/african_head.obj");
-	//scene->LoadModel("resource/models/head/eye_inner/african_head_eye_inner.obj");
-	//scene->LoadModel("resource/models/head/eye_outter/african_head_eye_outer.obj");
+		auto scene = std::make_shared<Scene>();
+		glm::vec3 eye, target;
+		if (!models.empty())
+		{
+			if (!sceneName.empty()) throw std::runtime_error("choose --scene or --model");
+			for (const auto& path : models) scene->LoadModel(path.c_str());
+			eye = { 0.55f, 0.15f, 2.9f }; target = { 0, 0, 0 };
+		}
+		else if (sceneName.empty() || sceneName == "diablo")
+		{
+			scene->LoadModel("resource/models/diablo/d3.obj");
+			scene->LoadModel("resource/models/floor_big/floor_big.obj");
+			eye = { 1.0f, 1.15f, 3.7f }; target = { 0, -0.12f, 0 };
+		}
+		else if (sceneName == "head")
+		{
+			scene->LoadModel("resource/models/head/head/african_head.obj");
+			scene->LoadModel("resource/models/head/eye_inner/african_head_eye_inner.obj");
+			eye = { 0.55f, 0.15f, 2.9f }; target = { 0, 0, 0 };
+		}
+		else if (sceneName == "helmet")
+		{
+			scene->LoadModel("resource/models/FlightHelmet/FlightHelmet.obj");
+			eye = { 0.66f, 0.76f, 0.84f }; target = { 0, 0.29f, 0 };
+		}
+		else throw std::runtime_error("unknown scene: " + sceneName);
+		scene->InitLight({-1,-1,-1}, {1,1,1});
+		scene->InitCamera(eye, target, {0,1,0}, glm::radians(45.0f), float(width)/height, 0.1f, 16.0f);
 
-	//scene->LoadModel("resource/models/FlightHelmet/FlightHelmet.obj");
-	//scene->LoadModel("resource/models/mando/mando.obj");
-	//scene->LoadModel("resource/models/Gun/Cerberus.obj");
-	//scene->LoadModel("resource/models/david/david.obj");
-
-	//diablo + floor (tutorial assets, ambient occlusion verification: crevices, contact)
-	scene->LoadModel("resource/models/diablo/d3.obj");
-	scene->LoadModel("resource/models/floor_big/floor_big.obj");
-
-	//light from upper-right-front like the tutorial renders
-	scene->InitLight({ -1, -1, -1 }, { 1, 1, 1 });
-
-	//david
-	/*scene->InitCamera({ -0.5f, 0.3f, 2.8f }, { 0, 0.2, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);*/
-
-	//FlightHelmet
-	//scene->InitCamera({ 0.6f, 0.8f, 0.75f }, { 0, 0.3, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
-
-	//diablo + floor
-	scene->InitCamera({ 1.0f, 1.4f, 5.0f }, { 0, -0.2, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
-
-	//MANDO
-	//scene->InitCamera({ -0.5f, 0.5f, 0.6f }, { 0, 0.2f, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
-
-	//Gun
-	//scene->InitCamera({ 0.5f, 0.7f, 1.0f }, { 0, 0.3f, 0 }, { 0, 1, 0 }, 1.0f / glm::four_over_pi<float>(), aspect, 0.01f, 10.0f);
-
-	//2. Renderer
-	Renderer renderer;
-	renderer.InitShaders();
-	renderer.SetViewport(0, 0, width, height);
-	//ambient occlusion off for the toon verification scene (tutorial toon image has no ao)
-	renderer.SetAoMode(Renderer::AoMode::Off);
-	renderer.BeginScene(scene);
-	//temp
-	
-
-	//3. Window
-	Window window{ "softRenderer", width, height };
-	window.SetRenderer(&renderer);
-	renderer.SetDrawHandle(&window);
-	window.Run();
-	window.ShutDowm();
-	return 0;
+		Renderer renderer;
+		renderer.InitShaders();
+		renderer.SetViewport(0, 0, width, height);
+		renderer.BeginScene(scene);
+		renderer.BindShader(mode, ShaderStageType::defaultRaster);
+		renderer.BindShader(post, ShaderStageType::postProcess);
+		renderer.SetAoMode(ao);
+		renderer.SetScanline(scanline);
+		renderer.SetNormalSource(normal);
+		renderer.Draw();
+		if (!aoOutput.empty() && !renderer.SaveAo(aoOutput.c_str())) return 1;
+		if (!output.empty()) return renderer.Image().write_tga_file(output.c_str()) ? 0 : 1;
+		if (!renderer.SavePasses()) return 1;
+		Window window("SoftRenderer", width, height);
+		if (!window.Show(renderer.Image())) throw std::runtime_error(SDL_GetError());
+		return 0;
+	}
+	catch (const std::exception& error)
+	{
+		std::cerr << "SoftRenderer: " << error.what() << '\n';
+		return 1;
+	}
 }

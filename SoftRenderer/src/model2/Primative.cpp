@@ -4,7 +4,7 @@ Primative::Primative(size_t nface):nface(nface)
 {
 	positions.resize(nface * 3);
 	normals.resize(nface * 3);
-	uvs.resize(nface * 3);
+	uvs.resize(nface * 3, glm::vec2(0.0f));
 }
 
 const glm::vec3& Primative::GetPosition(size_t nface, size_t triangleVertexIndex) const
@@ -29,7 +29,8 @@ void Primative::InerstPosition(size_t idx, float x, float y, float z)
 
 void Primative::InsertNormal(size_t idx, float x, float y, float z)
 {
-	normals[idx] = glm::normalize(glm::vec3(x, y, z));
+	glm::vec3 n(x, y, z);
+	normals[idx] = glm::dot(n, n) > 0.0f ? glm::normalize(n) : glm::vec3(0, 0, 1);
 }
 
 void Primative::InsertUV(size_t idx, float u, float v)

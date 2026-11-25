@@ -27,8 +27,16 @@ enum ShaderType
 	NormalMap,
 	Flat,
 	DepthMap,
-	ToonEdge
+	ToonEdge,
+	Phong,
+	BarycentricColor,
+	Lines,
+	Albedo,
+	Emission,
+	Lit
 };
+
+enum class NormalSource { Auto, Vertex, Object, Tangent };
 
 enum class ShaderStageType
 {
@@ -44,6 +52,9 @@ public:
 	virtual void SetSampler(uint32_t slot, const std::shared_ptr<Texture>& texture);
 	virtual glm::vec3 Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>& texture);
 public:
+	glm::vec3 SurfaceNormal(const glm::vec2& uv);
+	NormalSource normalSource = NormalSource::Auto;
+	std::shared_ptr<Texture> objectNormalTexture;
 	Triangle triangle;
 	glm::vec3 baryCentric{ 0.0f, 0.0f, 0.0f };
 	//uniforms
@@ -60,6 +71,7 @@ public:
 	std::shared_ptr<Texture> aoTexture;//slot 3
 	std::shared_ptr<Texture> roughnessTexture;//slot 4
 	std::shared_ptr<Texture> metalnessTexture;//slot 5
+	std::shared_ptr<Texture> emissiveTexture;//slot 6 (_glow.tga)
 
 
 	//baseColor

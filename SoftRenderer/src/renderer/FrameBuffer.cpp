@@ -1,9 +1,12 @@
 #include "FrameBuffer.h"
 
-FrameBuffer::FrameBuffer(uint32_t width, uint32_t height):width(width), height(height)
+FrameBuffer::FrameBuffer(uint32_t width, uint32_t height, bool depthOnly):width(width), height(height)
 {
-	colorAttachment = TGAImage(width, height, TGAImage::RGB);
-	normalAttachment = TGAImage(width, height, TGAImage::RGB);
+	if (!depthOnly)
+	{
+		colorAttachment = TGAImage(width, height, TGAImage::RGB);
+		normalAttachment = TGAImage(width, height, TGAImage::RGB);
+	}
 	zBuffer = new float[width * height];
 	Reset();
 }
@@ -15,7 +18,7 @@ FrameBuffer::~FrameBuffer()
 
 void FrameBuffer::Reset()
 {
-	colorAttachment.clear();
+	if (colorAttachment.get_width()) colorAttachment.clear();
 	if (clearColor.val != 0)
 	{
 		for (uint32_t y = 0; y < height; y++)

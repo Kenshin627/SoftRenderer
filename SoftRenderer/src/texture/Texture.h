@@ -14,7 +14,6 @@ public:
 	glm::vec4 Get(uint32_t w, uint32_t h) const;
 private:
 	unsigned char* data = nullptr;
-	int width;
-	int height;
-	int bytePerPixel;
+	int width = 0;
+	int height = 0;
 };
