@@ -19,10 +19,10 @@ public:
 	bool HasAlpha() const { return hasAlpha; }
 	AlphaMode ClassifyOpacity(char channel, float dissolve) const;
 	glm::vec4 SampleRgba(const glm::vec2& uv, TextureFilter filter,
-		const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb = false) const;
+		const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb = false, int maxAnisotropy = 1) const;
 	static float OpacityChannel(glm::vec4 rgba, char channel);
 	glm::vec3 Sample(const glm::vec2& uv, TextureFilter filter,
-		const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb = false) const;
+		const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb = false, int maxAnisotropy = 1) const;
 private:
 	struct Level
 	{

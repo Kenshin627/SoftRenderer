@@ -29,12 +29,12 @@ glm::vec3 Shader::Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>&
 	{
 		return { 1.0f, 1.0f, 1.0f }; // unbound sampler slot falls back to white
 	}
-	return texture->Sample(uv, textureFilter, uvDx, uvDy);
+	return texture->Sample(uv, textureFilter, uvDx, uvDy, false, maxAnisotropy);
 }
 
 glm::vec3 Shader::SampleColor(const glm::vec2& uv, const std::shared_ptr<Texture>& texture) const
 {
-	return texture ? texture->Sample(uv, textureFilter, uvDx, uvDy, hdr) : glm::vec3(1.0f);
+	return texture ? texture->Sample(uv, textureFilter, uvDx, uvDy, hdr, maxAnisotropy) : glm::vec3(1.0f);
 }
 
 glm::vec3 Shader::SampleEmission(const glm::vec2& uv) const

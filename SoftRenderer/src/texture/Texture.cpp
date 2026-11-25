@@ -107,14 +107,47 @@ AlphaMode Texture::ClassifyOpacity(char channel, float dissolve) const
 	return holes ? AlphaMode::Mask : AlphaMode::Opaque;
 }
 
-glm::vec3 Texture::Sample(const glm::vec2& uv, TextureFilter filter,
-	const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb) const
+namespace {
+struct FilterFootprint
 {
-	return glm::vec3(SampleRgba(uv, filter, uvDx, uvDy, srgb));
+	float widthSquared;
+	int taps = 1;
+	glm::vec2 stepUv{0.0f};
+};
+
+FilterFootprint AnisotropicFootprint(glm::dvec2 dx, glm::dvec2 dy, glm::vec2 size, int limit)
+{
+	// J maps a screen-space step to texels. The eigenvectors of J J^T are the
+	// texture-space axes, even when the projected UVs are rotated or sheared.
+	const double uu = dx.x * dx.x + dy.x * dy.x;
+	const double vv = dx.y * dx.y + dy.y * dy.y;
+	const double uv = dx.x * dx.y + dy.x * dy.y;
+	const double gap = std::sqrt((uu - vv) * (uu - vv) + 4.0 * uv * uv);
+	const double majorSquared = (uu + vv + gap) * 0.5;
+	if (majorSquared <= 1.0) return {1.0f};
+
+	const double major = std::sqrt(majorSquared);
+	// The product of the axis lengths is |det J|, also valid for a line footprint.
+	const double minor = std::abs(dx.x * dy.y - dx.y * dy.x) / major;
+	const double width = glm::max(1.0, glm::max(minor, major / limit));
+	const int taps = int(std::ceil(glm::min(double(limit), major / width)));
+	if (taps <= 1 || gap == 0.0) return {float(majorSquared)};
+
+	const glm::dvec2 axis = uu >= vv ? glm::dvec2(majorSquared - vv, uv) : glm::dvec2(uv, majorSquared - uu);
+	// Leave half a tap width at both ends so the taps cover the footprint.
+	const glm::dvec2 step = glm::normalize(axis) * ((major - width) / (taps - 1));
+	return {float(width * width), taps, glm::vec2(step / glm::dvec2(size))};
+}
+}
+
+glm::vec3 Texture::Sample(const glm::vec2& uv, TextureFilter filter,
+	const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb, int maxAnisotropy) const
+{
+	return glm::vec3(SampleRgba(uv, filter, uvDx, uvDy, srgb, maxAnisotropy));
 }
 
 glm::vec4 Texture::SampleRgba(const glm::vec2& uv, TextureFilter filter,
-	const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb) const
+	const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb, int maxAnisotropy) const
 {
 	if (base.rgba.empty()) return glm::vec4(0);
 	if (filter == TextureFilter::Nearest)
@@ -130,26 +163,46 @@ glm::vec4 Texture::SampleRgba(const glm::vec2& uv, TextureFilter filter,
 
 	const glm::vec2 size(base.width, base.height);
 	const auto dx = uvDx * size, dy = uvDy * size;
-	const float footprint2 = glm::max(glm::dot(dx, dx), glm::dot(dy, dy));
-	if (footprint2 <= 1.0f) return base.Bilinear(uv, srgb) / 255.0f;
-	auto& mips = srgb ? colorMips : rawMips;
-	std::call_once(srgb ? colorMipInit : rawMipInit, [this, srgb, &mips] {
-		std::vector<Level> chain;
-		const Level* level = &base;
-		while (level->width > 1 || level->height > 1)
-		{
-			chain.push_back(level->Downsample(srgb));
-			level = &chain.back();
-		}
-		mips.swap(chain);
-	});
-	const float lod = glm::min(0.5f * std::log2(footprint2), float(mips.size()));
-	auto level = [&](int i) -> const Level& { return i == 0 ? base : mips[i - 1]; };
-	if (filter == TextureFilter::Mipmap)
-		return level(int(std::round(lod))).Bilinear(uv, srgb) / 255.0f;
-	const int lower = int(lod);
-	const auto a = level(lower).Bilinear(uv, srgb);
-	const float blend = lod - lower;
-	if (blend == 0.0f) return a / 255.0f;
-	return glm::mix(a, level(lower + 1).Bilinear(uv, srgb), blend) / 255.0f;
+	FilterFootprint footprint{glm::max(glm::dot(dx, dx), glm::dot(dy, dy))};
+	if (filter == TextureFilter::Trilinear && maxAnisotropy > 1)
+		footprint = AnisotropicFootprint(dx, dy, size, glm::min(maxAnisotropy, 8));
+	const Level* first = &base;
+	const Level* second = &base;
+	float blend = 0.0f;
+	if (footprint.widthSquared > 1.0f)
+	{
+		auto& mips = srgb ? colorMips : rawMips;
+		std::call_once(srgb ? colorMipInit : rawMipInit, [this, srgb, &mips] {
+			std::vector<Level> chain;
+			const Level* level = &base;
+			while (level->width > 1 || level->height > 1)
+			{
+				chain.push_back(level->Downsample(srgb));
+				level = &chain.back();
+			}
+			mips.swap(chain);
+		});
+		const float lod = glm::min(0.5f * std::log2(footprint.widthSquared), float(mips.size()));
+		auto level = [&](int i) -> const Level& { return i == 0 ? base : mips[i - 1]; };
+		if (filter == TextureFilter::Mipmap)
+			return level(int(std::round(lod))).Bilinear(uv, srgb) / 255.0f;
+		const int lower = int(lod);
+		first = &level(lower);
+		if (lower == int(mips.size())) return first->Bilinear(uv, srgb) / 255.0f;
+		blend = lod - lower;
+		second = &level(lower + 1);
+	}
+	auto trilinear = [&](const glm::vec2& at) {
+		const auto a = first->Bilinear(at, srgb);
+		if (blend == 0.0f) return a;
+		return glm::mix(a, second->Bilinear(at, srgb), blend);
+	};
+	if (footprint.taps == 1) return trilinear(uv) / 255.0f;
+	glm::vec4 sum(0.0f);
+	for (int i = 0; i < footprint.taps; ++i)
+	{
+		const float offset = i - 0.5f * (footprint.taps - 1);
+		sum += trilinear(uv + offset * footprint.stepUv);
+	}
+	return sum / (255.0f * footprint.taps);
 }
