@@ -26,8 +26,7 @@ Model2::Model2(const std::string& path)
     size_t slash = path.find_last_of("/\\");
     ParseMaterial(mats, slash == std::string::npos ? "." : path.substr(0, slash));
 
-    // tutorial assets (head/diablo/floor) ship no .mtl: fall back to the tinyrenderer
-    // suffix convention (<model>_diffuse/_nm_tangent/_spec.tga) so they render textured
+    // Models without an MTL can supply textures named after the OBJ stem.
     std::shared_ptr<Material> fallbackMaterial = std::make_shared<Material>();
     if (materials.empty()) {
         size_t dot = path.find_last_of(".");

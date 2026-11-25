@@ -30,18 +30,16 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 & $exe --help
 ```
 
-## 与 TinyRenderer 教程的对应关系
+## 渲染特性
 
-以教程各章最终展示的渲染效果为对照。代码沿用仓库的 GLM 数学库和浮点管线。教程中的整数深度溢出演示、逐版数学库习作等中间步骤由对应的最终实现覆盖。[TinyRenderer 教程目录](https://haqr.eu/tinyrenderer/)
-
-| 章节 | 对照主分支 `7a143d8` 的结果 | 运行入口 |
+| 功能 | 实现 | 运行入口 |
 | --- | --- | --- |
-| [直线](https://haqr.eu/tinyrenderer/bresenham/) · [三角形](https://haqr.eu/tinyrenderer/rasterization/) · [重心坐标](https://haqr.eu/tinyrenderer/barycentric/) | 已有 Bresenham、包围盒填充和背面剔除。本次让线框使用场景相机并写入帧缓冲，增加扫描线区间遍历和 RGB 三顶点插值视图。 | `--mode wire`、`--mode barycentric --raster scanline` |
-| [深度测试](https://haqr.eu/tinyrenderer/z-buffer/) · [透视](https://haqr.eu/tinyrenderer/camera-naive/) · [相机](https://haqr.eu/tinyrenderer/camera/) | 已有观察矩阵、透视与正交投影、浮点 Z-buffer、透视正确插值。本次补上除以 w 前的六平面裁剪，深度预览按当前可见范围映射灰度。 | `--mode depth` |
-| [光照](https://haqr.eu/tinyrenderer/shading/) | 修复 Flat 着色缺失的面顶点数据。已有 Gouraud、逐像素漫反射和 Blinn–Phong，本次补上用反射向量计算高光的 Phong。 | `flat`、`gouraud`、`smooth`、`blinn`、`phong` |
-| [纹理](https://haqr.eu/tinyrenderer/textures/) · [切线空间](https://haqr.eu/tinyrenderer/tangent/) | 已有漫反射、高光和切线空间贴图。本次接入物体空间法线，统一法线解码和可视化，修复灰度纹理采样，并沿用 [PR #7 的自发光实现](https://github.com/Kenshin627/SoftRenderer/pull/7)。 | `--mode normal --normals object`、`--mode albedo`、`--mode emission` |
-| [阴影](https://haqr.eu/tinyrenderer/shadow/) · [环境遮蔽](https://haqr.eu/tinyrenderer/ssao/) | 已有方向光阴影、方向采样 AO 和 SSAO。现在可用同一机位比较开关效果，首帧即包含 AO，并可导出实际参与着色的可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
-| [卡通着色](https://haqr.eu/tinyrenderer/toon/) | 已有三档光照和深度 Sobel 描边，本次修复背景深度参与卷积时的浮点溢出，并开放后处理开关。 | `--mode toon --post none` 对比 `--mode toon` |
+| 线框与三角形填充 | Bresenham 绘制相机投影后的网格边。包围盒和扫描线两种遍历方式共享覆盖测试，RGB 视图用三个顶点的颜色显示重心插值。 | `--mode wire`、`--mode barycentric --raster scanline` |
+| 相机与深度 | 三角形先经过齐次空间六平面裁剪，再进行透视除法。浮点 Z-buffer 决定表面可见性，深度预览将当前可见范围映射为灰度。 | `--mode depth` |
+| 光照 | Flat 使用面法线，Gouraud 插值顶点光照，逐像素着色使用插值法线。Phong 用反射向量计算高光，Blinn–Phong 使用半程向量。 | `flat`、`gouraud`、`smooth`、`phong`、`blinn` |
+| 材质与法线 | 支持漫反射、高光、自发光，以及物体空间和切线空间法线贴图。可单独查看底色、发光区域或参与光照的世界空间法线。 | `--mode albedo`、`--mode emission`、`--mode normal --normals object` |
+| 阴影与环境遮蔽 | 方向光阴影由光源视角的深度图生成。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
+| 卡通与描边 | 三档光照生成色带，Sobel 算子从深度变化中提取轮廓。可以使用同一机位单独比较描边效果。 | `--mode toon --post none` 对比 `--mode toon` |
 
 ### 光栅化与深度
 
