@@ -23,6 +23,30 @@ def display_byte(radiance, ev=0):
     return round(255 * srgb)
 
 
+def unit(v):
+    length = math.sqrt(sum(x*x for x in v))
+    return tuple(x/length for x in v)
+
+
+def write_environment(path, radiance, width=32, height=16):
+    # Small uncompressed Radiance RGBE panoramas; keep the test oracle independent of the decoder.
+    pixels = bytearray()
+    for y in range(height):
+        theta = math.pi * (y + 0.5) / height
+        for x in range(width):
+            phi = 2 * math.pi * ((x + 0.5) / width - 0.5)
+            direction = (math.sin(theta)*math.cos(phi), math.cos(theta), math.sin(theta)*math.sin(phi))
+            rgb = radiance(x, y, direction)
+            if max(rgb) == 0:
+                pixels.extend((0, 0, 0, 0))
+            else:
+                _, exponent = math.frexp(max(rgb))
+                pixels.extend(int(c * 2**(8-exponent)) for c in rgb)
+                pixels.append(exponent + 128)
+    header = f"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {height} +X {width}\n"
+    path.write_bytes(header.encode("ascii") + pixels)
+
+
 class RenderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -297,6 +321,98 @@ class RenderTests(unittest.TestCase):
         pixel = self.frame("--model", "gloss.obj", "--mode", "lit", "--hdr",
                            cwd=self.folder).getpixel((80, 63))
         self.assertAlmostEqual(pixel[0], display_byte(128/255), delta=1)
+
+    def ibl_material(self, normal, orm, albedo=(255, 255, 255)):
+        # The center camera ray hits the origin. Assign one known shading normal to the triangle.
+        (self.folder / "ibl.obj").write_text(
+            "mtllib ibl.mtl\nv -1 -1 0\nv 1 -1 0\nv 0 1 0\nvn "
+            + " ".join(map(str, normal)) + "\nusemtl sample\nf 1//1 2//1 3//1\n")
+        (self.folder / "ibl.mtl").write_text("newmtl sample\nmap_Kd base.tga\nmap_Ka orm.tga\n")
+        Image.new("RGB", (1, 1), albedo).save(self.folder / "base.tga")
+        Image.new("RGB", (1, 1), orm).save(self.folder / "orm.tga")
+
+    def ibl_pixel(self, *options):
+        return self.frame("--model", "ibl.obj", "--mode", "pbr", "--env", "probe.hdr",
+                          *options, cwd=self.folder).getpixel((80, 63))
+
+    def test_ibl_constant_hdr_and_split_sum(self):
+        radiance = (4, 1, 0.25)
+        write_environment(self.folder / "probe.hdr", lambda x,y,d: radiance, 10, 5)
+        for roughness, response in ((0, 1), (255, 1 - math.log(2))):
+            # White metal at normal incidence. Unit roughness has an analytic Smith-GGX integral.
+            self.ibl_material(unit((.55, .15, 2.9)), (255, roughness, 255))
+            direct = self.ibl_pixel("--env-strength", "0")
+            for strength, angle in ((0.5, "0"), (1, "90"), (1, "-270")):
+                actual = self.ibl_pixel("--env-strength", str(strength), "--env-rotation", angle)
+                for c, d, value in zip(radiance, direct, actual):
+                    base = srgb_decode(d) / (1 - srgb_decode(d))
+                    self.assertAlmostEqual(value, display_byte(base + strength*response*c), delta=1)
+
+    def test_ibl_diffuse_convolution_rotation_and_ao(self):
+        # For L(w) = 1 + 0.75*w.x, normalized Lambert convolution is 1 + 0.5*N.x.
+        write_environment(self.folder / "probe.hdr", lambda x,y,d: (1 + 0.75*d[0],)*3, 64, 32)
+        n = unit((.55, .15, 2.9))
+        self.ibl_material(n, (255, 0, 0))
+        d = srgb_decode(self.ibl_pixel("--env-strength", "0")[0])
+        direct = d/(1-d)
+        for angle, nx in ((0, n[0]), (90, -n[2]), (450, -n[2])):
+            actual = self.ibl_pixel("--env-rotation", str(angle))[0]
+            expected = direct + 0.96*(1 + 0.5*nx) + 0.04*(1 + 0.75*nx)
+            self.assertAlmostEqual(actual, display_byte(expected), delta=1)
+        self.ibl_material(n, (0, 0, 0))
+        self.assertEqual(self.ibl_pixel("--env-rotation", "90"), self.ibl_pixel("--env-strength", "0"))
+
+    def test_ibl_glossy_reflection_spreads_with_roughness(self):
+        v = unit((.55, .15, 2.9))
+        def light(x, y, direction):
+            inside = sum(a*b for a,b in zip(v, direction)) > math.cos(math.radians(13))
+            return (8, 8, 8) if inside else (0, 0, 0)
+        write_environment(self.folder / "probe.hdr", light, 64, 32)
+        response = []
+        for roughness in (0, 153):
+            self.ibl_material(v, (255, roughness, 255))
+            off = self.ibl_pixel("--env-strength", "0")[0]
+            response.append([self.ibl_pixel("--env-rotation", angle)[0]-off for angle in ("0", "40")])
+        smooth, rough = response
+        self.assertGreater(smooth[0], rough[0] + 30)
+        self.assertEqual(smooth[1], 0)
+        self.assertGreater(rough[1], 10)
+
+    def test_ibl_wraps_longitude_and_clamps_poles(self):
+        def stripes(x, y, d):
+            if y == 0: return (0, 2, 0)
+            if y == 7: return (2, 0, 0)
+            return (1, 0, 0) if x == 0 else ((0, 0, 1) if x == 15 else (0, 0, 0))
+        write_environment(self.folder / "probe.hdr", stripes, 16, 8)
+        v = unit((.55, .15, 2.9))
+        for reflected, env in (((-1,0,0), (.5,0,.5)), ((0,1,0), (0,2,0)), ((0,-1,0), (2,0,0))):
+            self.ibl_material(unit(tuple(a+b for a,b in zip(v, reflected))), (255, 0, 255))
+            direct = self.ibl_pixel("--env-strength", "0")
+            for actual, d, target in zip(self.ibl_pixel(), direct, env):
+                base = srgb_decode(d)/(1-srgb_decode(d))
+                self.assertAlmostEqual(actual, display_byte(base+target), delta=1)
+
+    def test_ibl_selects_pbr_hdr_and_preserves_direct_light(self):
+        self.ibl_material(unit((.55, .15, 2.9)), (0, 130, 80))
+        write_environment(self.folder / "probe.hdr", lambda x,y,d: (1,1,1), 10, 5)
+        args = ("--model", "ibl.obj", "--env", "probe.hdr")
+        implicit = self.frame(*args, cwd=self.folder)
+        explicit = self.frame(*args, "--mode", "pbr", "--hdr", cwd=self.folder)
+        direct = self.frame("--model", "ibl.obj", "--mode", "pbr", "--hdr", cwd=self.folder)
+        self.assertEqual(implicit.tobytes(), explicit.tobytes())
+        self.assertEqual(implicit.tobytes(), direct.tobytes())  # zero material AO removes only indirect light
+
+    def test_ibl_rejects_invalid_environment_options(self):
+        Image.new("RGB", (8, 4)).save(self.folder / "ldr.png")
+        write_environment(self.folder / "square.hdr", lambda x,y,d: (1,1,1), 4, 4)
+        for args in (("--env", "missing.hdr"), ("--env", "ldr.png"), ("--env", "square.hdr"),
+                     ("--env-rotation", "90"), ("--env", "studio", "--env-strength", "-1"),
+                     ("--env", "studio", "--env-rotation", "nan"), ("--env", "studio", "--mode", "lit")):
+            target = self.folder / "bad.tga"
+            result = subprocess.run([str(EXE), "--mode", "pbr", *args, "--output", str(target)],
+                                    cwd=self.folder, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, args)
+            self.assertFalse(target.exists())
 
     def test_hdr_pbr_exposes_linear_material_radiance_once(self):
         # The shading normal faces away from all four point lights; only the PBR ambient term remains.

@@ -22,14 +22,13 @@ bool PbrShader::Fragment(glm::vec4& gl_fragColor)
 	//光照方向取反，从像素出发
 	
 	glm::vec3 V = glm::normalize(camPos - worldPos);
-	glm::vec3  R = glm::reflect(-V, NORMAL);
 	glm::vec3 lo { 0.0f };
 	glm::vec3 F0 { 0.04f };
 	glm::vec3 aoRoughMetal = Sampler2D(uv, aoTexture);
 	float ao = aoRoughMetal.r;
-	float roughness = aoRoughMetal.g;
+	float materialRoughness = aoRoughMetal.g;
 	// A zero-width GGX lobe has no finite peak in the floating-point image.
-	if (hdr) roughness = glm::max(roughness, 0.045f);
+	float roughness = hdr ? glm::max(materialRoughness, 0.045f) : materialRoughness;
 	float metalness = aoRoughMetal.b;
 
 	glm::vec3 albedo = SampleColor(uv, diffuseTexture);
@@ -58,7 +57,9 @@ bool PbrShader::Fragment(glm::vec4& gl_fragColor)
 		lo += (Kd * albedo / PI + specBRDF) * lightColor * NdotL;
 	}
 
-	glm::vec3 ambient = glm::vec3(0.03f) * albedo * ao;
+	glm::vec3 ambient = environment
+		? environment->Evaluate(NORMAL, V, albedo, F0, materialRoughness, metalness) * ao
+		: glm::vec3(0.03f) * albedo * ao;
 	glm::vec3 color = ambient + lo;
 
 	if (hdr)
