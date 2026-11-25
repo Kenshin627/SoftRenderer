@@ -37,7 +37,7 @@ void usage()
 	std::cout << "SoftRenderer [--scene diablo|head|helmet | --model file.obj ...] [--size WIDTHxHEIGHT] [--output frame.tga]\n"
 		"  --mode albedo|emission|lit|wire|barycentric|flat|gouraud|smooth|phong|blinn|normal|shadow|toon|depth|pbr\n"
 		"  --filter nearest|bilinear|mipmap|trilinear   (default: nearest)\n"
-		"  --normals auto|vertex|object|tangent   --raster bbox|scanline\n"
+		"  --normals auto|vertex|object|tangent   --raster bbox|scanline   --msaa 1|4 (default: 1)\n"
 		"  --ao off|ssao|brute (phong/shadow)     --ao-map visibility.tga\n"
 		"  --post none|outline|gray|rgb|mosaic   (toon defaults to outline)\n";
 }
@@ -53,7 +53,7 @@ int main(int argc, char* argv[])
 		TextureFilter filter = TextureFilter::Nearest;
 		NormalSource normal = NormalSource::Auto;
 		auto ao = Renderer::AoMode::Off;
-		bool explicitPost = false, scanline = false;
+		bool explicitPost = false, scanline = false, msaa = false;
 		int width = 1920, height = 1080;
 		for (int i = 1; i < argc; ++i)
 		{
@@ -70,6 +70,11 @@ int main(int argc, char* argv[])
 			else if (key == "--ao") ao = choice(occlusion, value);
 			else if (key == "--ao-map") aoOutput = value;
 			else if (key == "--output") output = value;
+			else if (key == "--msaa")
+			{
+				if (value != "1" && value != "4") throw std::runtime_error("--msaa expects 1 or 4");
+				msaa = value == "4";
+			}
 			else if (key == "--raster")
 			{
 				if (value != "scanline" && value != "bbox") throw std::runtime_error("unknown rasterizer: " + value);
@@ -126,6 +131,7 @@ int main(int argc, char* argv[])
 		renderer.BindShader(post, ShaderStageType::postProcess);
 		renderer.SetAoMode(ao);
 		renderer.SetScanline(scanline);
+		renderer.SetMsaa(msaa);
 		renderer.SetNormalSource(normal);
 		renderer.SetTextureFilter(filter);
 		renderer.Draw();

@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import unittest
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageStat
 
 PROJECT = Path(__file__).resolve().parents[1] / "SoftRenderer"
 EXE = PROJECT / "bin/x64/Release/SoftRenderer.exe"
@@ -17,9 +17,9 @@ class RenderTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
 
-    def frame(self, *args, cwd=None):
+    def frame(self, *args, cwd=None, size="161x127"):
         target = self.folder / "frame.tga"
-        subprocess.run([str(EXE), *args, "--size", "161x127", "--output", str(target)],
+        subprocess.run([str(EXE), *args, "--size", size, "--output", str(target)],
                        cwd=cwd or PROJECT, check=True)
         with Image.open(target) as image:
             return image.convert("RGB")
@@ -31,6 +31,92 @@ class RenderTests(unittest.TestCase):
                 bbox = self.frame(*args)
                 self.assertGreater(len(bbox.getcolors(161 * 127)), 100)
                 self.assertEqual(bbox.tobytes(), self.frame(*args, "--raster", "scanline").tobytes())
+
+    def screen_mesh(self, name, points, faces, color, distance=2.0):
+        # Coordinates are in the 161x127 bottom-up viewport of the --model camera.
+        eye = (0.55, 0.15, 2.9)
+        length = math.sqrt(sum(v*v for v in eye))
+        back = tuple(v / length for v in eye)
+        h = math.hypot(back[0], back[2])
+        right = (back[2]/h, 0, -back[0]/h)
+        up = (back[1]*right[2], back[2]*right[0]-back[0]*right[2], -back[1]*right[0])
+        scale = 2 * distance * math.tan(math.radians(22.5)) / 127
+        rows = []
+        for x, y in points:
+            world = [eye[i] - distance * back[i] + scale * ((x-80.5)*right[i] + (y-63.5)*up[i])
+                     for i in range(3)]
+            rows.append("v " + " ".join(map(str, world)))
+        rows.extend("f " + " ".join(map(str, f)) for f in faces)
+        (self.folder / (name + ".obj")).write_text("\n".join(rows))
+        Image.new("RGB", (1, 1), color).save(self.folder / (name + "_diffuse.tga"))
+        return name + ".obj"
+
+    def test_shared_edge_has_exactly_one_owner(self):
+        for samples, bottom in (("1", 30), ("4", 30.75)):
+            a, b, c, d = (40, bottom), (100, bottom), (100, bottom+60), (40, bottom+60)
+            lower = self.screen_mesh("lower", [a,b,c], [(1,2,3)], (240,0,0))
+            upper = self.screen_mesh("upper", [a,c,d], [(1,2,3)], (0,240,0))
+            args = ("--mode", "albedo", "--msaa", samples)
+            first = self.frame(*args, "--model", lower, "--model", upper, cwd=self.folder)
+            second = self.frame(*args, "--model", upper, "--model", lower, cwd=self.folder)
+            self.assertEqual(first.tobytes(), second.tobytes())
+            for x in range(41, 99):
+                for y in range(32, 89):
+                    r, g, b = first.getpixel((x, 126-y))
+                    self.assertEqual((r+g, b), (240, 0))
+            # In a Y-up raster the lower triangle owns its left (diagonal) edge.
+            self.assertEqual(first.getpixel((80, 126-70)), (240, 0, 0))
+
+    def test_subpixel_triangle_hits_only_covered_sample(self):
+        mesh = self.screen_mesh("thin", [(80.30,63.07),(80.46,63.07),(80.375,63.23)],
+                                [(1,2,3)], (241,0,0))
+        args = ("--mode", "albedo", "--model", mesh)
+        single = self.frame(*args, cwd=self.folder)
+        self.assertEqual(single.getpixel((80,63)), (209,195,177))
+        for traversal in ("bbox", "scanline"):
+            multi = self.frame(*args, "--msaa", "4", "--raster", traversal, cwd=self.folder)
+            self.assertEqual(multi.getpixel((80,63)), (217,146,133))
+        tiny = self.screen_mesh("center", [(80.44,63.44),(80.56,63.44),(80.5,63.58)],
+                                [(1,2,3)], (241,0,0))
+        self.assertEqual(self.frame("--mode", "albedo", "--model", tiny, cwd=self.folder)
+                         .getpixel((80,63)), (241,0,0))
+
+    def test_msaa_depth_and_resolve_are_per_sample(self):
+        faces = [(1,2,3), (1,3,4)]
+        near = self.screen_mesh("near", [(50,40),(80.5,40),(80.5,90),(50,90)], faces, (240,0,0))
+        far = self.screen_mesh("far", [(45,35),(110,35),(110,95),(45,95)], faces, (0,0,240), 3.0)
+        for first, second in ((near,far), (far,near)):
+            args = ("--msaa", "4", "--model", first, "--model", second)
+            im = self.frame(*args, "--mode", "albedo", cwd=self.folder)
+            self.assertEqual(im.getpixel((80,63)), (120,0,120))
+            depth = self.frame(*args, "--mode", "depth", cwd=self.folder)
+            self.assertAlmostEqual(depth.getpixel((80,63))[0], 128, delta=1)
+
+    def test_msaa_shading_point_independent_of_occluder_order(self):
+        self.filter_triangle(lambda x, y, q: (0.5 + 0.12*x/q, 0.5))
+        ramp = Image.new("L", (2, 1))
+        ramp.putdata([0, 240])
+        ramp.save(self.folder / "plane_diffuse.tga")
+        near = self.screen_mesh("occluder", [(50,40),(80.5,40),(80.5,90),(50,90)],
+                                [(1,2,3), (1,3,4)], (20,20,20), distance=0.6)
+        args = ("--msaa", "4", "--mode", "albedo", "--filter", "bilinear")
+        for first, second in ((near, "plane.obj"), ("plane.obj", near)):
+            frame = self.frame(*args, "--model", first, "--model", second, cwd=self.folder)
+            # Two samples see the foreground; the other two share the full
+            # background primitive's centroid shading value (120).
+            self.assertAlmostEqual(frame.getpixel((80, 63))[0], 70, delta=1)
+
+    def test_msaa_silhouette_against_supersampled_reference(self):
+        mesh = self.screen_mesh("slant", [(13.2,16.7),(139.6,35.1),(77.1,118.4)], [(1,2,3)], (5,10,20))
+        args = ("--mode", "albedo", "--model", mesh)
+        single = self.frame(*args, cwd=self.folder)
+        multi = self.frame(*args, "--msaa", "4", cwd=self.folder)
+        ref = self.frame(*args, cwd=self.folder, size="1288x1016").resize(single.size, Image.Resampling.BOX)
+        def error(image):
+            return sum(ImageStat.Stat(ImageChops.difference(image, ref)).sum)
+        self.assertLess(error(multi), 0.5 * error(single))
+        scanline = self.frame(*args, "--msaa", "4", "--raster", "scanline", cwd=self.folder)
+        self.assertEqual(multi.tobytes(), scanline.tobytes())
 
     def test_normals_and_emission(self):
         # No vn: the loader must derive +Z from this face. UV axes match +X/+Y.

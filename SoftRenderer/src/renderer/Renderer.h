@@ -59,6 +59,7 @@ public:
 	void SetAoMode(AoMode mode);
 	void SetTextureFilter(TextureFilter value) { textureFilter = value; }
 	void SetNormalSource(NormalSource source) { normalSource = source; }
+	void SetMsaa(bool enabled);
 	void SetScanline(bool enabled) { scanline = enabled; }
 	const TGAImage& Image() const;
 	bool SavePasses() const;
@@ -83,6 +84,7 @@ private:
 	TextureFilter textureFilter = TextureFilter::Nearest;
 	NormalSource normalSource = NormalSource::Auto;
 	bool scanline = false;
+	bool msaa = false;
 	//ambient occlusion state (static scene: computed once, applied per pixel afterwards)
 	AoMode aoMode = AoMode::Off;
 	bool aoComputed = false;

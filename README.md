@@ -1,6 +1,6 @@
 # SoftRenderer
 
-用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 25 张截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染。点击任意图片可查看完整尺寸的 PNG。
+用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 26 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附一张轮廓局部放大对照图。点击任意图片可查看完整尺寸的 PNG。
 
 **人头像 · Phong 与物体空间法线**
 
@@ -52,7 +52,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 
 ### 光栅化与深度
 
-线框用 Bresenham 绘制每条三角形边，包括背面的边。彩色图将三个顶点分别设为红、绿、蓝，由片元对应的重心权重混色。两种填充路径共享像素中心覆盖测试、深度测试和属性插值。深度图中，最近的可见表面为黑色，最远为白色。
+线框用 Bresenham 绘制每条三角形边，包括背面的边。彩色图将三个顶点分别设为红、绿、蓝，由片元对应的重心权重混色。两种填充路径共享采样点覆盖规则、深度测试和属性插值。深度图中，最近的可见表面为黑色，最远为白色。
 
 **Bresenham 线框**
 
@@ -65,6 +65,24 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 **相机深度**
 
 [![Diablo 和地面的浮点深度可视化](docs/screenshots/depth.png)](docs/screenshots/depth.png?raw=true)
+
+### 多重采样抗锯齿
+
+**左侧为 1× 单采样，右侧为 4× MSAA。** 两侧取自同一机位、同一分辨率的飞行头盔，截取轮廓上相同的 96 × 64 像素，以最近邻放大 6 倍。观察皮革斜边与浅色背景之间的过渡。
+
+[![飞行头盔轮廓局部对照，左侧单采样，右侧四倍多重采样](docs/screenshots/helmet-msaa-detail.png)](docs/screenshots/helmet-msaa-detail.png?raw=true)
+
+默认 `--msaa 1` 在像素中心采样。`--msaa 4` 在每个像素内的四个位置分别判断三角形覆盖和深度。每个三角形在该像素的覆盖重心执行一次片元着色，颜色写入通过深度测试的样本。最终帧取四个样本的颜色平均值。共享边使用左上填充规则，面积小于一个像素的三角形只要命中采样点也能显示。
+
+MSAA 作用于相机的三角形填充。深度预览按样本着色后合成，AO 和 Sobel 描边读取最近可见样本的深度。纹理缩小时可搭配 `--filter trilinear`。Bresenham 线框和光源深度图使用各自的单采样路径。
+
+```powershell
+& $exe --scene helmet --mode pbr --size 2160x1560 --msaa 4 --output helmet-msaa4.tga
+```
+
+**飞行头盔 · 4× MSAA 全图**（[打开同机位 1× 原图](docs/screenshots/helmet.png?raw=true)）
+
+[![飞行头盔四倍多重采样完整渲染](docs/screenshots/helmet-msaa4.png)](docs/screenshots/helmet-msaa4.png?raw=true)
 
 ### 光照与法线
 
@@ -177,7 +195,7 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 
 ## 复现截图与测试
 
-在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、法线贴图坐标系、灰度纹理、自发光、首帧 AO 和卡通描边。
+在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、首帧 AO 和卡通描边。
 
 ```powershell
 python -m pip install Pillow

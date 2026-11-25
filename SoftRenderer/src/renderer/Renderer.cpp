@@ -254,6 +254,7 @@ bool Renderer::SaveAo(const char* path) const
 void Renderer::Draw()
 {
 	if (!activeScene) return;
+	defaultPassFrameBuffer->samples.resize(msaa && surface != ShaderType::Lines ? size_t(viewport.width) * viewport.height : 0);
 	Clear();
 	if (surface == ShaderType::Lines)
 	{
@@ -272,28 +273,16 @@ void Renderer::Draw()
 			DefaultPass();
 		}
 	}
-	if (surface == ShaderType::DepthMap)
-	{
-		const auto& fb = *defaultPassFrameBuffer;
-		float nearDepth = 1.0f, farDepth = -1.0f;
-		for (uint32_t i = 0; i < fb.width * fb.height; ++i)
-		{
-			float z = fb.zBuffer[i];
-			if (z == std::numeric_limits<float>::max()) continue;
-			nearDepth = glm::min(nearDepth, z);
-			farDepth = glm::max(farDepth, z);
-		}
-		for (uint32_t y = 0; y < fb.height; ++y)
-			for (uint32_t x = 0; x < fb.width; ++x)
-			{
-				float z = fb.zBuffer[x + fb.width * y];
-				if (z == std::numeric_limits<float>::max()) continue;
-				auto gray = static_cast<uint8_t>(255 * (z - nearDepth) / glm::max(farDepth - nearDepth, 1e-6f));
-				defaultPassFrameBuffer->colorAttachment.set(x, y, TGAColor(gray, gray, gray, 255));
-			}
-	}
+	defaultPassFrameBuffer->FinishColor(surface == ShaderType::DepthMap);
 	defaultPassFrameBuffer->colorAttachment.flip_vertically();
 	if (postProcessShader) PostProcess();
+}
+
+void Renderer::SetMsaa(bool enabled)
+{
+	if (msaa == enabled) return;
+	msaa = enabled;
+	SetAoMode(aoMode);
 }
 
 void Renderer::SetAoMode(AoMode mode)
@@ -304,6 +293,31 @@ void Renderer::SetAoMode(AoMode mode)
 }
 
 namespace {
+// 8 fractional bits keep shared-edge ties exact, including rotated sample positions.
+constexpr int subpixelScale = 256;
+const glm::ivec2 center(128, 128);
+const std::array<glm::ivec2, 4> rotatedSamples = {{
+	{96, 32}, {224, 96}, {32, 160}, {160, 224}
+}};
+
+// AO needs the position of the same surface sample as its resolved depth and normal.
+glm::vec4 DepthNdc(const FrameBuffer& fb, uint32_t x, uint32_t y)
+{
+	size_t pixel = x + size_t(y) * fb.width;
+	float z = fb.zBuffer[pixel];
+	glm::vec2 offset(0.5f);
+	if (!fb.samples.empty())
+	{
+		for (size_t i = 0; i < rotatedSamples.size(); ++i)
+			if (fb.samples[pixel][i].depth == z)
+			{
+				offset = glm::vec2(rotatedSamples[i]) / float(subpixelScale);
+				break;
+			}
+	}
+	return {2.0f * (x + offset.x) / fb.width - 1.0f, 2.0f * (y + offset.y) / fb.height - 1.0f, z, 1.0f};
+}
+
 float planeDistance(const glm::vec4& p, int plane)
 {
 	return p.w + ((plane % 2 == 0) ? p[plane / 2] : -p[plane / 2]);
@@ -366,7 +380,7 @@ void Renderer::ComputeSsao()
 			float z = fb.zBuffer[idx];
 			if (z == std::numeric_limits<float>::max()) continue; // background
 			//reconstruct the world position and the world normal of this fragment
-			glm::vec4 ndc = { 2.0f * (x + 0.5f) / w - 1.0f, 2.0f * (y + 0.5f) / h - 1.0f, z, 1.0f };
+			glm::vec4 ndc = DepthNdc(fb, x, y);
 			glm::vec4 worldPos = invViewProjection * ndc;
 			worldPos /= worldPos.w;
 			TGAColor nc = fb.normalAttachment.get((int)x, (int)y);
@@ -455,7 +469,7 @@ void Renderer::ComputeBruteForceAo()
 				float z = fb.zBuffer[idx];
 				if (z == std::numeric_limits<float>::max()) continue; // background
 				//reconstruct the world position and normal of this fragment
-				glm::vec4 ndc = { 2.0f * (x + 0.5f) / w - 1.0f, 2.0f * (y + 0.5f) / h - 1.0f, z, 1.0f };
+				glm::vec4 ndc = DepthNdc(fb, x, y);
 				glm::vec4 worldPos = invViewProjection * ndc;
 				worldPos /= worldPos.w;
 				TGAColor nc = fb.normalAttachment.get((int)x, (int)y);
@@ -555,8 +569,11 @@ void Renderer::Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>
 			float da = planeDistance(a.clip, plane), db = planeDistance(b.clip, plane);
 			if ((da < 0 && db > 0) || (da > 0 && db < 0))
 			{
-				float t = da / (da - db);
-				next[output++] = { glm::mix(a.clip, b.clip, t), glm::mix(a.weights, b.weights, t) };
+				// Evaluate shared clip intersections in the same direction for both faces.
+				const auto& outside = da < 0 ? a : b;
+				const auto& inside = da < 0 ? b : a;
+				float t = da < 0 ? da / (da - db) : db / (db - da);
+				next[output++] = { glm::mix(outside.clip, inside.clip, t), glm::mix(outside.weights, inside.weights, t) };
 			}
 			if (db >= 0) next[output++] = b;
 		}
@@ -572,6 +589,45 @@ void Renderer::Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>
 	}
 }
 
+namespace {
+struct CoverageEdge
+{
+	glm::ivec2 start, delta;
+	int threshold; // A top or left edge accepts zero; other edges require a positive value.
+
+	CoverageEdge(glm::ivec2 a, glm::ivec2 b) : start(a), delta(b - a),
+		threshold((delta.y < 0 || (delta.y == 0 && delta.x < 0)) ? 0 : 1) {} // Y increases upwards
+
+	int64_t At(glm::ivec2 p) const
+	{
+		return int64_t(delta.x) * (p.y - start.y) - int64_t(delta.y) * (p.x - start.x);
+	}
+};
+
+// Bound all edge segments inside the row's sample band, including flat edges.
+void ScanlineSpan(const glm::vec4* v, float bottom, float top, int& left, int& right)
+{
+	float lo = float(right + 1), hi = float(left - 1);
+	for (int i = 0; i < 3; ++i)
+	{
+		glm::vec2 a(v[i]), b(v[(i + 1) % 3]);
+		if (a.y > b.y) std::swap(a, b);
+		if (a.y > top || b.y < bottom) continue;
+		float x0 = a.x, x1 = b.x;
+		if (a.y != b.y)
+		{
+			float slope = (b.x - a.x) / (b.y - a.y);
+			x0 = a.x + (glm::max(a.y, bottom) - a.y) * slope;
+			x1 = a.x + (glm::min(b.y, top) - a.y) * slope;
+		}
+		lo = glm::min(lo, glm::min(x0, x1));
+		hi = glm::max(hi, glm::max(x0, x1));
+	}
+	left = glm::max(left, int(glm::floor(lo)) - 1);
+	right = glm::min(right, int(glm::ceil(hi)));
+}
+}
+
 void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& currentBuffer, const glm::vec2* uvs)
 {
 	//the viewport transform is derived from the target buffer, since the shadow buffer
@@ -581,12 +637,23 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 	glm::vec4 beforeClippedCoords[3] = { bufferViewport.transform * vertices[0], bufferViewport.transform * vertices[1], bufferViewport.transform * vertices[2] };
 	glm::vec4 afterClippedCoords[3] = { beforeClippedCoords[0] / beforeClippedCoords[0].w, beforeClippedCoords[1] / beforeClippedCoords[1].w,beforeClippedCoords[2] / beforeClippedCoords[2].w };
 
-	// tutorial rasterization chapter: back-face culling + discard triangles covering less than one pixel.
-	// signed doubled area via 2D cross product (same convention as BaryCentric):
-	// counter-clockwise (front-facing) > 0, clockwise (back-facing) < 0, |area| < 1px => sub-pixel.
-	float signedArea2 = (afterClippedCoords[1].x - afterClippedCoords[0].x) * (afterClippedCoords[2].y - afterClippedCoords[0].y)
-	                  - (afterClippedCoords[2].x - afterClippedCoords[0].x) * (afterClippedCoords[1].y - afterClippedCoords[0].y);
-	if (signedArea2 < 1.0f) return;
+	glm::ivec2 fixed[3];
+	for (int i = 0; i < 3; ++i)
+	{
+		fixed[i] = glm::ivec2(glm::round(glm::vec2(afterClippedCoords[i]) * float(subpixelScale)));
+		afterClippedCoords[i].x = float(fixed[i].x) / subpixelScale;
+		afterClippedCoords[i].y = float(fixed[i].y) / subpixelScale;
+	}
+	const CoverageEdge edges[] = {{fixed[1], fixed[2]}, {fixed[2], fixed[0]}, {fixed[0], fixed[1]}};
+	const int64_t area = edges[0].At(fixed[0]);
+	if (area <= 0) return;
+	const float invArea = 1.0f / float(area);
+	const float signedArea2 = float(area) / (subpixelScale * subpixelScale);
+	const bool multi = !currentBuffer->samples.empty();
+	const int sampleCount = multi ? 4 : 1;
+	const glm::ivec2* offsets = multi ? rotatedSamples.data() : &center;
+	const bool depthOnly = currentBuffer != defaultPassFrameBuffer;
+	const glm::vec3 ndcZ(afterClippedCoords[0].z, afterClippedCoords[1].z, afterClippedCoords[2].z);
 
 	// H = (u/w, v/w, 1/w) varies linearly over the clipped screen triangle.
 	glm::vec3 hDx(0.0f), hDy(0.0f);
@@ -610,66 +677,71 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 	{
 		int left = int(bbox.min.x), right = int(bbox.max.x);
 		if (scanline)
-		{
-			// Restrict this row to the horizontal span between intersected edges.
-			float lo = bbox.max.x + 1.0f, hi = bbox.min.x - 1.0f;
-			float py = y + 0.5f;
-			for (int edge = 0; edge < 3; ++edge)
-			{
-				auto a = afterClippedCoords[edge], b = afterClippedCoords[(edge + 1) % 3];
-				if (a.y == b.y || py < glm::min(a.y,b.y) || py > glm::max(a.y,b.y)) continue;
-				float hit = a.x + (py - a.y) / (b.y - a.y) * (b.x - a.x);
-				lo = glm::min(lo, hit); hi = glm::max(hi, hit);
-			}
-			left = glm::max(left, int(glm::floor(lo - 0.5f)));
-			right = glm::min(right, int(glm::ceil(hi - 0.5f)));
-		}
+			ScanlineSpan(afterClippedCoords, y + (multi ? 0.125f : 0.5f), y + (multi ? 0.875f : 0.5f), left, right);
+
 		for (int x = left; x <= right; ++x)
 		{
-			glm::vec2 p = { x + 0.5f, y + 0.5f };
-			glm::vec3 bc_screen = BaryCentric(afterClippedCoords, p);
-			if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+			const size_t index = x + size_t(y) * currentBuffer->width;
+			auto* quad = multi ? &currentBuffer->samples[index] : nullptr;
+			glm::vec3 centroid(0.0f), closestWeights(0.0f);
+			float depths[4], closest = currentBuffer->zBuffer[index];
+			int covered = 0, visibleMask = 0;
+			for (int i = 0; i < sampleCount; ++i)
 			{
+				glm::ivec2 point = glm::ivec2(x, y) * subpixelScale + offsets[i];
+				const int64_t a = edges[0].At(point), b = edges[1].At(point), c = edges[2].At(point);
+				if (a < edges[0].threshold || b < edges[1].threshold || c < edges[2].threshold) continue;
+				glm::vec3 weights = glm::vec3(float(a), float(b), float(c)) * invArea;
+				centroid += weights;
+				++covered;
+				depths[i] = glm::dot(weights, ndcZ);
+				if (depths[i] >= (multi ? (*quad)[i].depth : currentBuffer->zBuffer[index])) continue;
+				visibleMask |= 1 << i;
+				if (depths[i] < closest) { closest = depths[i]; closestWeights = weights; }
+			}
+			if (!visibleMask) continue;
+			if (depthOnly)
+			{
+				currentBuffer->zBuffer[index] = closest;
 				continue;
 			}
-			//tutorial our_gl rasterize: depth = screen-linear interpolation of the ndc z
-			float depth = bc_screen.x * afterClippedCoords[0].z + bc_screen.y * afterClippedCoords[1].z + bc_screen.z * afterClippedCoords[2].z;
 
-			uint32_t pixelIndex = x + y * currentBuffer->width;
-			if (depth < currentBuffer->zBuffer[pixelIndex])
+			// Shade once per primitive/pixel at the centroid of geometric coverage.
+			// Occlusion by an earlier draw must not change the interpolation point.
+			glm::vec3 bc = centroid / float(covered);
+			const glm::vec3 clipW(vertices[0].w, vertices[1].w, vertices[2].w);
+			bc /= clipW;
+			const float reciprocalW = bc.x + bc.y + bc.z;
+			bc = sourceWeights * (bc / reciprocalW);
+			activeShader->baryCentric = bc;
+			if (uvs)
 			{
-				if (currentBuffer.get() != defaultPassFrameBuffer.get())
+				const glm::vec2 uv = bc.x * uvs[0] + bc.y * uvs[1] + bc.z * uvs[2];
+				activeShader->uvDx = (glm::vec2(hDx) - uv * hDx.z) / reciprocalW;
+				activeShader->uvDy = (glm::vec2(hDy) - uv * hDy.z) / reciprocalW;
+			}
+			activeShader->aoFactor = aoBuffer.empty() ? 1.0f : aoBuffer[index];
+			glm::vec4 fragment;
+			if (activeShader->Fragment(fragment)) continue;
+			TGAColor color(uint8_t(fragment.r * 255), uint8_t(fragment.g * 255), uint8_t(fragment.b * 255), 255);
+			if (multi)
+			{
+				for (int i = 0; i < sampleCount; ++i)
+					if (visibleMask & (1 << i)) (*quad)[i] = {depths[i], color.r, color.g, color.b};
+			}
+			else currentBuffer->colorAttachment.set(x, y, color);
+
+			if (closest < currentBuffer->zBuffer[index])
+			{
+				currentBuffer->zBuffer[index] = closest;
+				if (aoMode != AoMode::Off && !aoComputed)
 				{
-					currentBuffer->zBuffer[pixelIndex] = depth;
-					continue;
-				}
-				//tutorial our_gl rasterize: perspective-correct barycentric for varying
-				//interpolation divides by the clip-space w (not z)
-				glm::vec3 bc_clip = { bc_screen.x / beforeClippedCoords[0].w, bc_screen.y / beforeClippedCoords[1].w, bc_screen.z / beforeClippedCoords[2].w };
-				const float reciprocalW = bc_clip.x + bc_clip.y + bc_clip.z;
-				bc_clip /= reciprocalW;
-				bc_clip = sourceWeights * bc_clip;
-				activeShader->baryCentric = bc_clip;
-				if (uvs)
-				{
-					// Quotient rule for uv = H.xy / H.z, before repeating the texture.
-					const glm::vec2 uv = bc_clip.x * uvs[0] + bc_clip.y * uvs[1] + bc_clip.z * uvs[2];
-					activeShader->uvDx = (glm::vec2(hDx) - uv * hDx.z) / reciprocalW;
-					activeShader->uvDy = (glm::vec2(hDy) - uv * hDy.z) / reciprocalW;
-				}
-				//per-pixel ambient occlusion multiplier (full-res buffer only)
-				activeShader->aoFactor = (!aoBuffer.empty() && currentBuffer->width == viewport.width && currentBuffer->height == viewport.height) ? aoBuffer[pixelIndex] : 1.0f;
-				glm::vec4 gl_FragColor;
-				if (!activeShader->Fragment(gl_FragColor))
-				{
-					//cache the interpolated world normal for the ao passes (only needed on the main buffer)
-					if (aoMode != AoMode::Off && !aoComputed)
-					{
-						glm::vec3 n = glm::normalize(bc_clip.x * activeShader->triangle.vertices[0].normal + bc_clip.y * activeShader->triangle.vertices[1].normal + bc_clip.z * activeShader->triangle.vertices[2].normal);
-						currentBuffer->normalAttachment.set((int)p.x, (int)p.y, TGAColor((uint8_t)((n.x * 0.5f + 0.5f) * 255), (uint8_t)((n.y * 0.5f + 0.5f) * 255), (uint8_t)((n.z * 0.5f + 0.5f) * 255), 255));
-					}
-					currentBuffer->colorAttachment.set((int)p.x, (int)p.y, TGAColor((uint8_t)(gl_FragColor.r * 255), (uint8_t)(gl_FragColor.g * 255), (uint8_t)(gl_FragColor.b * 255), 255));
-					currentBuffer->zBuffer[pixelIndex] = depth;
+					auto w = closestWeights / clipW;
+					w = sourceWeights * (w / (w.x + w.y + w.z));
+					const auto& v = activeShader->triangle.vertices;
+					glm::vec3 n = glm::normalize(w.x * v[0].normal + w.y * v[1].normal + w.z * v[2].normal);
+					n = (n * 0.5f + 0.5f) * 255.0f;
+					currentBuffer->normalAttachment.set(x, y, TGAColor(uint8_t(n.x), uint8_t(n.y), uint8_t(n.z), 255));
 				}
 			}
 		}
@@ -708,7 +780,7 @@ glm::vec3 Renderer::BaryCentric(const glm::vec4* vertices, const glm::vec2& p)
 	glm::vec2 v02 = v2 - v0;
 	glm::vec2 vp0 = v0 - p;
 	glm::vec3 uvw = glm::cross(glm::vec3(v01.x, v02.x, vp0.x), glm::vec3(v01.y, v02.y, vp0.y));
-	if (uvw.z < 1e-2)
+	if (uvw.z <= 0.0f)
 	{
 		return { -1, 1, 1 };
 	}
