@@ -62,6 +62,16 @@ def hdr_comparison(directory):
     detail_grid("hdr-bloom-detail", sequence, (978, 285, 1166, 473), gap=6, scale=2)
 
 
+def environment_comparison(directory):
+    names = []
+    for angle in (0, 90, 180):
+        name = f"helmet-ibl-{angle}"
+        render(directory, name, "helmet", "pbr", "--env", "studio", "--env-rotation", str(angle))
+        names.append(name)
+    detail_grid("helmet-ibl-leather-detail", [names], (880, 68, 1290, 278), gap=6, scale=2)
+    detail_grid("helmet-ibl-metal-detail", [names], (760, 1150, 1070, 1370), gap=6, scale=2)
+
+
 def main():
     GALLERY.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -78,6 +88,7 @@ def main():
             render(directory, mode, "diablo", mode)
         shadow_comparison(directory)
         hdr_comparison(directory)
+        environment_comparison(directory)
         for filtering in ("bilinear", "mipmap", "trilinear"):
             render(directory, "albedo-" + filtering, "diablo", "albedo", "--filter", filtering)
         render(directory, "bands", "diablo", "toon", "--post", "none")

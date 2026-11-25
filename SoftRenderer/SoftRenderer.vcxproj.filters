@@ -36,6 +36,9 @@
     <ClCompile Include="src\light\DirectionLight.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\light\EnvironmentLight.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="src\scene\Scene.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -138,6 +141,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\light\DirectionLight.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\light\EnvironmentLight.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\scene\Scene.h">

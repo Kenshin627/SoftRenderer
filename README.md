@@ -1,6 +1,6 @@
 # SoftRenderer
 
-用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 36 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附四张局部放大图，分别对比模型轮廓、投影边缘、脚掌接地处和自发光泛光。点击任意图片可查看完整尺寸的 PNG。
+用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 39 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附六张局部放大图，可对比模型轮廓、投影边缘、脚掌接地、自发光泛光，以及环境旋转时皮革和金属上的反射。点击任意图片可查看完整尺寸的 PNG。
 
 **人头像 · Phong 与物体空间法线**
 
@@ -48,6 +48,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 | 材质与法线 | 支持漫反射、高光、自发光，以及物体空间和切线空间法线贴图。可单独查看底色、发光区域或参与光照的世界空间法线。 | `--mode albedo`、`--mode emission`、`--mode normal --normals object` |
 | 纹理过滤 | 支持最近邻、双线性、单层 mipmap 与三线性。根据每个片元的屏幕空间 UV 梯度和当前贴图尺寸选择层级。 | `--filter nearest`、`bilinear`、`mipmap`、`trilinear` |
 | 阴影与环境遮蔽 | 方向光使用独立分辨率的深度图，支持单点深度比较和 3×3 PCF。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
+| 基于图像的光照（IBL） | 从 HDR 全景图计算漫反射辐照度和随粗糙度变化的镜面反射，可旋转环境并调节光照强度。 | `--scene helmet --env studio --env-rotation 90` |
 | HDR、曝光与 Bloom | 在线性浮点颜色上合成光照、自发光与泛光，可调整曝光后导出 sRGB 图像。 | `--hdr`、`--exposure -2`、`--emission-strength 64 --bloom 1` |
 | 卡通与描边 | 三档光照生成色带，Sobel 算子从深度变化中提取轮廓。可以使用同一机位单独比较描边效果。 | `--mode toon --post none` 对比 `--mode toon` |
 
@@ -278,6 +279,53 @@ Bloom 从合成后的可见像素提取线性亮度超过 1 的部分，在半�
 
 [![飞行头盔 PBR 使用统一 HDR 输出的完整渲染](docs/screenshots/helmet-hdr.png)](docs/screenshots/helmet-hdr.png?raw=true)
 
+### 基于图像的环境光照（IBL）
+
+固定 Flight Helmet 的相机、点光源、材质和 0 EV 曝光，只绕世界 Y 轴旋转摄影棚环境。下图从左到右为 **0°、90°、180°**。观察皮帽上靠近缝线的亮区，它从前部移向右侧，再移到帽顶左缘。第二组取自同三帧的金属铭牌，朝向软箱时牌面明显变亮。每一组都截取原图相同位置并放大两倍。
+
+**皮革 · 帽顶和缝线**
+
+[![同一块皮革在三个环境角度下的宽高光](docs/screenshots/helmet-ibl-leather-detail.png)](docs/screenshots/helmet-ibl-leather-detail.png?raw=true)
+
+**金属 · 底座铭牌**
+
+[![底座金属铭牌随环境旋转产生的反射变化](docs/screenshots/helmet-ibl-metal-detail.png)](docs/screenshots/helmet-ibl-metal-detail.png?raw=true)
+
+| 参数 | 用法 |
+| --- | --- |
+| `--env studio` | 使用随项目提供的摄影棚 HDR 全景图，自动选择 PBR 并启用线性 HDR 输出。 |
+| `--env <文件.hdr>` | 加载自定义 2:1 经纬全景图，输入格式为 Radiance RGBE，采用上北下南的 `-Y +X` 排列。 |
+| `--env-rotation <角度>` | 按右手定则绕世界 +Y 旋转。默认 0°，每 360° 回到原方向。 |
+| `--env-strength <倍率>` | 环境光强度，范围 0 到 1024，默认 1。设为 0 可单独查看直接光和材质自发光。 |
+
+```powershell
+& $exe --scene helmet --env studio --env-rotation 90 --size 2160x1560 --output helmet-ibl.tga
+& $exe --scene helmet --mode pbr --env resource/environments/studio_small_09_1k.hdr --env-rotation 180 --env-strength 0.5 --output helmet-half.tga
+```
+
+加载环境图时，程序按全景纹素覆盖的立体角生成浮点 mip 链。漫反射对可见半球做余弦加权积分，得到 64 × 32 的辐照度图（已除以 π）。镜面反射保留原图作为光滑端，另用 GGX 重要性采样预过滤五档粗糙度。着色时按材质粗糙度混合相邻两档，再由观察角和粗糙度查询 64 × 64 的 BRDF 积分表。这些预计算结果可以在同一进程中复用，旋转时只改变查询方向。[分离求和近似的推导与积分方法](https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf)
+
+回归测试还用一块白色金属平面隔离粗糙度的影响。让半角为 13° 的亮区先对准镜面方向，再偏转 40°。相对各自仅有直接光的结果，粗糙度 0 的中心像素分别增加 242 和 0 个灰阶，粗糙度 0.6 时分别增加 60 和 26 个灰阶。这组数值取自色调映射后的 8 位输出。
+
+材质的 AO 通道调制环境漫反射和环境镜面反射，点光源和自发光单独合成。未指定环境图时沿用原有的常量环境光。示例环境 **Studio Small 09** 由 Sergej Majboroda 拍摄，以 CC0 发布，仓库收录了 1K HDR 文件。[环境图原作](https://polyhaven.com/a/studio_small_09) · [资源许可](https://polyhaven.com/license)
+
+**Flight Helmet · 摄影棚环境 0°**
+
+[![零度摄影棚环境下的头盔全图](docs/screenshots/helmet-ibl-0.png)](docs/screenshots/helmet-ibl-0.png?raw=true)
+
+<details>
+<summary>展开 90° 和 180° 的同机位高清全图</summary>
+
+**摄影棚环境 90°**
+
+[![摄影棚旋转九十度后的头盔全图](docs/screenshots/helmet-ibl-90.png)](docs/screenshots/helmet-ibl-90.png?raw=true)
+
+**摄影棚环境 180°**
+
+[![摄影棚旋转一百八十度后的头盔全图](docs/screenshots/helmet-ibl-180.png)](docs/screenshots/helmet-ibl-180.png?raw=true)
+
+</details>
+
 ### 卡通与后处理
 
 依次展示三档色带、在深度突变处叠加墨线后的效果，以及对阴影场景应用马赛克的结果。`--post` 也支持 `gray` 和 `rgb`。Flight Helmet 使用项目原有的 GGX 材质和打包的遮蔽、粗糙度、金属度贴图，效果见页首。
@@ -296,7 +344,7 @@ Bloom 从合成后的可见像素提取线性亮度超过 1 的部分，在半�
 
 ## 复现截图与测试
 
-在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO、卡通描边、线性颜色过滤、高光曝光、HDR 多重采样合成与遮挡后的 Bloom。
+在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO、卡通描边、线性颜色过滤、高光曝光、HDR 多重采样合成、遮挡后的 Bloom，以及环境光的方向、强度、粗糙度响应和全景图接缝。
 
 ```powershell
 python -m pip install Pillow

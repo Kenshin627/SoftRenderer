@@ -142,6 +142,7 @@ void Renderer::DefaultPass()
 	activeShader->emissionStrength = activeShader->hdr ? hdr.emissionStrength : 1.0f;
 	const bool needsGradients = textureFilter == TextureFilter::Mipmap || textureFilter == TextureFilter::Trilinear;
 	activeShader->light = activeScene->GetLight();
+	activeShader->environment = activeScene->GetEnvironment();
 	activeShader->pointLights = activeScene->GetPointLights();
 	activeShader->model = glm::identity<glm::mat4>();
 	activeShader->itModel = glm::mat3(glm::transpose(glm::inverse(activeShader->model)));
@@ -209,6 +210,7 @@ void Renderer::DefaultPass()
 			}
 		}
 	}
+	activeShader->environment.reset();
 }
 
 void Renderer::PostProcess()
@@ -270,7 +272,8 @@ void Renderer::Draw()
 	if (!activeScene) return;
 	const size_t pixels = size_t(viewport.width) * viewport.height;
 	const bool multi = msaa && surface != ShaderType::Lines;
-	const bool useHdr = hdr.enabled && surface != ShaderType::Lines && surface != ShaderType::DepthMap
+	const bool environmentPbr = activeScene->GetEnvironment() && (surface == ShaderType::PBR || surface == ShaderType::PBR2);
+	const bool useHdr = (environmentPbr || hdr.enabled) && surface != ShaderType::Lines && surface != ShaderType::DepthMap
 		&& surface != ShaderType::NormalMap && surface != ShaderType::BarycentricColor;
 	defaultPassFrameBuffer->samples.resize(multi ? pixels : 0);
 	defaultPassFrameBuffer->linearColor.resize(useHdr ? pixels * (multi ? 4 : 1) : 0);
