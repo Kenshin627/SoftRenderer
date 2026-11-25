@@ -1,6 +1,6 @@
 # SoftRenderer
 
-用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 30 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附三张局部放大图，分别对比模型轮廓、投影边缘和脚掌接地处。点击任意图片可查看完整尺寸的 PNG。
+用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 36 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附四张局部放大图，分别对比模型轮廓、投影边缘、脚掌接地处和自发光泛光。点击任意图片可查看完整尺寸的 PNG。
 
 **人头像 · Phong 与物体空间法线**
 
@@ -48,6 +48,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 | 材质与法线 | 支持漫反射、高光、自发光，以及物体空间和切线空间法线贴图。可单独查看底色、发光区域或参与光照的世界空间法线。 | `--mode albedo`、`--mode emission`、`--mode normal --normals object` |
 | 纹理过滤 | 支持最近邻、双线性、单层 mipmap 与三线性。根据每个片元的屏幕空间 UV 梯度和当前贴图尺寸选择层级。 | `--filter nearest`、`bilinear`、`mipmap`、`trilinear` |
 | 阴影与环境遮蔽 | 方向光使用独立分辨率的深度图，支持单点深度比较和 3×3 PCF。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
+| HDR、曝光与 Bloom | 在线性浮点颜色上合成光照、自发光与泛光，可调整曝光后导出 sRGB 图像。 | `--hdr`、`--exposure -2`、`--emission-strength 64 --bloom 1` |
 | 卡通与描边 | 三档光照生成色带，Sobel 算子从深度变化中提取轮廓。可以使用同一机位单独比较描边效果。 | `--mode toon --post none` 对比 `--mode toon` |
 
 ### 光栅化与深度
@@ -208,7 +209,7 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 | `mipmap` | 选最接近目标 LOD 的一层，在该层内做双线性过滤。 |
 | `trilinear` | 分别对相邻两层做双线性过滤，再按小数 LOD 混合，使层级切换连续。 |
 
-缩小时，光栅器从裁剪后的三角形计算透视校正的 UV 梯度，用两个屏幕方向中较大的纹素覆盖长度选择 LOD。每张贴图使用自己的尺寸。首次需要低分辨率层时，程序按面积加权生成 mip 链，直至 1 × 1；奇数宽高的边缘纹素也参与平均。放大时，两种 mipmap 模式都使用第 0 层。过滤沿用现有贴图的通道数值，法线在着色时重新归一化。
+缩小时，光栅器从裁剪后的三角形计算透视校正的 UV 梯度，用两个屏幕方向中较大的纹素覆盖长度选择 LOD。每张贴图使用自己的尺寸。首次需要低分辨率层时，程序按面积加权生成 mip 链，直至 1 × 1；奇数宽高的边缘纹素也参与平均。放大时，两种 mipmap 模式都使用第 0 层。默认过滤沿用贴图的通道数值。HDR 模式在线性光空间过滤颜色贴图，法线贴图在着色时重新归一化。
 
 ```powershell
 & $exe --scene diablo --mode albedo --filter trilinear --size 2160x1560 --output trilinear.tga
@@ -225,6 +226,57 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 **三线性 · 相邻层级混合**
 
 [![棋盘地面使用三线性过滤](docs/screenshots/albedo-trilinear.png)](docs/screenshots/albedo-trilinear.png?raw=true)
+
+### HDR、曝光与 Bloom
+
+下图固定 Diablo 的相机、材质、2048² PCF 阴影和 0 EV 曝光。从左到右，自发光强度依次为 **1×、8×、64×、64× 加 Bloom**。前三幅中，额头晶体和眼睛逐渐变亮，晶体里的纹路仍能分辨。第四幅只开启 Bloom，金黄色光晕扩散到眼眶和周围鳞片。四幅都截取全图的同一处 188 × 188 像素，放大两倍。
+
+[![相同曝光下的 Diablo 头部，自发光 1 倍、8 倍、64 倍及 64 倍加 Bloom](docs/screenshots/hdr-bloom-detail.png)](docs/screenshots/hdr-bloom-detail.png?raw=true)
+
+| 参数 | 含义 | 默认值 |
+| --- | --- | --- |
+| `--hdr` | 开启线性浮点颜色管线。指定下面任一参数也会启用。 | 关闭 |
+| `--exposure EV` | 曝光补偿，范围 −16 到 +16。每提高 1 EV，进入色调映射的线性值翻倍。 | 0 EV |
+| `--emission-strength N` | 自发光贴图在线性空间的亮度倍率，范围 0 到 1024。 | 1 |
+| `--bloom N` | 泛光叠加强度，范围 0 到 16。设为 0 跳过泛光计算。 | 0 |
+
+底色和自发光纹素先经过 sRGB 解码，再做双线性过滤与 mip 层平均。法线、高光强度及打包的 AO、粗糙度和金属度按数据通道采样。光照结果写入浮点 RGB 缓冲，4× MSAA 先平均可见样本的线性颜色。归一化的 sRGB 编解码采用分段传递函数。[sRGB 传递函数](https://www.w3.org/TR/css-color-4/#predefined-sRGB)
+
+Bloom 从合成后的可见像素提取线性亮度超过 1 的部分，在半分辨率图上做水平和垂直高斯模糊，双线性上采样后叠回场景。曝光作用于整个合成结果，各颜色通道通过 Reinhard 曲线 `x / (1 + x)` 压缩，再编码为 8 位 sRGB。窗口与 TGA 使用同一输出。灰度、描边等显示效果在此之后执行。深度、法线、重心和线框诊断图保留各自的输出编码。
+
+```powershell
+& $exe --scene diablo --mode shadow --shadow-size 2048 --shadow-filter pcf --hdr --emission-strength 64 --bloom 1 --size 2160x1560 --output bloom.tga
+& $exe --scene helmet --mode pbr --exposure -1 --output helmet-minus1.tga
+```
+
+**Diablo · 64× 自发光、0 EV、Bloom 强度 1**
+
+[![开启 HDR 与 Bloom 的 Diablo 全图](docs/screenshots/hdr-bloom.png)](docs/screenshots/hdr-bloom.png?raw=true)
+
+<details>
+<summary>展开同机位的三档自发光及曝光对照全图</summary>
+
+**1× 自发光 · 0 EV**
+
+[![自发光强度 1 的全图](docs/screenshots/hdr-emission-1.png)](docs/screenshots/hdr-emission-1.png?raw=true)
+
+**8× 自发光 · 0 EV**
+
+[![自发光强度 8 的全图](docs/screenshots/hdr-emission-8.png)](docs/screenshots/hdr-emission-8.png?raw=true)
+
+**64× 自发光 · 0 EV**
+
+[![自发光强度 64 的全图](docs/screenshots/hdr-emission-64.png)](docs/screenshots/hdr-emission-64.png?raw=true)
+
+**64× 自发光 · −2 EV** · 相同光照下，进入色调映射的亮度降至上一幅的四分之一。
+
+[![自发光强度 64 曝光降低两档的全图](docs/screenshots/hdr-exposure-minus2.png)](docs/screenshots/hdr-exposure-minus2.png?raw=true)
+
+</details>
+
+**Flight Helmet · PBR、0 EV** · 头盔的 GGX 光照也经过同一条 HDR 输出管线。
+
+[![飞行头盔 PBR 使用统一 HDR 输出的完整渲染](docs/screenshots/helmet-hdr.png)](docs/screenshots/helmet-hdr.png?raw=true)
 
 ### 卡通与后处理
 
@@ -244,7 +296,7 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 
 ## 复现截图与测试
 
-在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO 和卡通描边。
+在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO、卡通描边、线性颜色过滤、高光曝光、HDR 多重采样合成与遮挡后的 Bloom。
 
 ```powershell
 python -m pip install Pillow

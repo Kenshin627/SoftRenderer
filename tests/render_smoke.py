@@ -11,6 +11,18 @@ PROJECT = Path(__file__).resolve().parents[1] / "SoftRenderer"
 EXE = PROJECT / "bin/x64/Release/SoftRenderer.exe"
 
 
+def srgb_decode(byte):
+    s = byte / 255
+    return s / 12.92 if s <= 0.04045 else ((s + 0.055) / 1.055)**2.4
+
+
+def display_byte(radiance, ev=0):
+    exposed = radiance * 2**ev
+    mapped = exposed / (1 + exposed)
+    srgb = 12.92 * mapped if mapped <= 0.0031308 else 1.055 * mapped**(1/2.4) - 0.055
+    return round(255 * srgb)
+
+
 class RenderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -248,6 +260,116 @@ class RenderTests(unittest.TestCase):
             frame = self.sample_filter(mode)
             self.assertAlmostEqual(frame.getpixel((80, 63))[0], expected, delta=1.1)
             self.assertEqual(frame.tobytes(), self.sample_filter(mode, "scanline").tobytes())
+
+    def test_hdr_recovers_emission_above_display_white(self):
+        self.screen_mesh("lamp", [(40, 30), (120, 30), (80, 100)], [(1, 2, 3)], (0, 0, 0))
+        Image.new("L", (1, 1), 0).save(self.folder / "lamp_spec.tga")
+        glow = (255, 128, 10)
+        Image.new("RGB", (1, 1), glow).save(self.folder / "lamp_glow.tga")
+        for mode in ("emission", "lit", "phong", "shadow", "pbr"):
+            for scale, ev in ((1, 0), (8, 0), (8, -3)):
+                with self.subTest(mode=mode, scale=scale, ev=ev):
+                    frame = self.frame("--model", "lamp.obj", "--mode", mode, "--emission-strength",
+                                       str(scale), "--exposure", str(ev), cwd=self.folder)
+                    expected = tuple(display_byte(scale * srgb_decode(c), ev) for c in glow)
+                    pixel = frame.getpixel((80, 63))
+                    self.assertTrue(all(abs(a-b) <= 1 for a, b in zip(expected, pixel)), (expected, pixel))
+
+    def test_hdr_color_filtering_happens_in_linear_light(self):
+        texture = Image.new("L", (2, 1))
+        texture.putdata([0, 255])
+        texture.save(self.folder / "plane_diffuse.tga")
+        for mode, rate in (("bilinear", 0), ("mipmap", 10), ("trilinear", 10)):
+            self.filter_triangle(lambda x, y, q: (0.5 + rate * x/q, 0.5))
+            frame = self.frame("--model", "plane.obj", "--mode", "albedo", "--hdr",
+                               "--filter", mode, cwd=self.folder)
+            self.assertAlmostEqual(frame.getpixel((80, 63))[0], display_byte(0.5), delta=1)
+
+    def test_hdr_keeps_specular_texture_as_data(self):
+        # At the center the normal bisects the view and light directions, giving a unit highlight.
+        eye = (0.55, 0.15, 2.9)
+        h = [v / math.sqrt(sum(c*c for c in eye)) + 1/math.sqrt(3) for v in eye]
+        n = " ".join(str(v / math.sqrt(sum(c*c for c in h))) for v in h)
+        (self.folder / "gloss.obj").write_text(
+            "v -1 -1 0\nv 1 -1 0\nv 0 1 0\nvn " + n + "\nf 1//1 2//1 3//1\n")
+        Image.new("L", (1, 1), 0).save(self.folder / "gloss_diffuse.tga")
+        Image.new("L", (1, 1), 128).save(self.folder / "gloss_spec.tga")
+        pixel = self.frame("--model", "gloss.obj", "--mode", "lit", "--hdr",
+                           cwd=self.folder).getpixel((80, 63))
+        self.assertAlmostEqual(pixel[0], display_byte(128/255), delta=1)
+
+    def test_hdr_pbr_exposes_linear_material_radiance_once(self):
+        # The shading normal faces away from all four point lights; only the PBR ambient term remains.
+        (self.folder / "mat.obj").write_text(
+            "mtllib mat.mtl\nv -1 -1 0\nv 1 -1 0\nv 0 1 0\nvn 0 0 -1\nusemtl cloth\nf 1//1 2//1 3//1\n")
+        (self.folder / "mat.mtl").write_text("newmtl cloth\nmap_Kd color.tga\nmap_Ka orm.tga\n")
+        albedo = (230, 90, 8)
+        Image.new("RGB", (1, 1), albedo).save(self.folder / "color.tga")
+        Image.new("RGB", (1, 1), (128, 160, 0)).save(self.folder / "orm.tga")
+        pixel = self.frame("--model", "mat.obj", "--mode", "pbr", "--exposure", "4",
+                           cwd=self.folder).getpixel((80, 63))
+        expected = tuple(display_byte(0.03 * (128/255) * srgb_decode(c), 4) for c in albedo)
+        self.assertEqual(pixel, expected)
+
+    def test_hdr_msaa_resolves_radiance_before_tone_mapping(self):
+        mesh = self.screen_mesh("lamp", [(80.30,63.07), (80.46,63.07), (80.375,63.23)],
+                                [(1,2,3)], (0, 0, 0))
+        Image.new("RGB", (1, 1), (255, 0, 0)).save(self.folder / "lamp_glow.tga")
+        frame = self.frame("--mode", "emission", "--model", mesh, "--msaa", "4",
+                           "--emission-strength", "8", cwd=self.folder)
+        # One bright red sample and three uncovered samples of the beige clear color.
+        expected = tuple(display_byte((3 * srgb_decode(bg) + light) / 4)
+                         for bg, light in zip((209, 195, 177), (8, 0, 0)))
+        self.assertEqual(frame.getpixel((80, 63)), expected)
+
+    def test_bloom_only_spreads_excess_scene_luminance(self):
+        mesh = self.screen_mesh("lamp", [(78,60), (84,60), (84,66), (78,66)],
+                                [(1,2,3), (1,3,4)], (0, 0, 0))
+        Image.new("RGB", (1, 1), (255, 0, 0)).save(self.folder / "lamp_glow.tga")
+        def render(strength, bloom, ev):
+            return self.frame("--model", mesh, "--mode", "emission", "--emission-strength",
+                              str(strength), "--bloom", str(bloom), "--exposure", str(ev), cwd=self.folder)
+        # Pure red radiance 4 has luminance 0.8504, even if camera exposure is high.
+        self.assertEqual(render(4, 0, 2).tobytes(), render(4, 1, 2).tobytes())
+        base, bloom = render(32, 0, -1), render(32, 1, -1)
+        inside, near, far = (80, 63), (85, 63), (10, 63)
+        self.assertGreater(bloom.getpixel(inside)[0], base.getpixel(inside)[0])
+        self.assertGreater(bloom.getpixel(near)[0], base.getpixel(near)[0])
+        self.assertEqual(bloom.getpixel(near)[1:], base.getpixel(near)[1:])
+        self.assertEqual(bloom.getpixel(far), base.getpixel(far))
+
+    def test_occluded_emission_cannot_contribute_to_bloom(self):
+        faces = [(1,2,3), (1,3,4)]
+        lamp = self.screen_mesh("lamp", [(76,58), (84,58), (84,66), (76,66)], faces, (0,0,0), 3)
+        lid = self.screen_mesh("cover", [(60,45), (100,45), (100,80), (60,80)], faces, (0,0,0), 2)
+        Image.new("L", (1, 1), 255).save(self.folder / "lamp_glow.tga")
+        for name in ("lamp", "cover"):
+            Image.new("L", (1, 1), 0).save(self.folder / (name + "_spec.tga"))
+        args = ("--mode", "shadow", "--shadow-size", "128", "--msaa", "4", "--ao", "ssao",
+                "--emission-strength", "32", "--bloom", "1")
+        reference = self.frame(*args, "--model", lid, cwd=self.folder)
+        for first, second in ((lamp, lid), (lid, lamp)):
+            frame = self.frame(*args, "--model", first, "--model", second, cwd=self.folder)
+            self.assertEqual(reference.tobytes(), frame.tobytes())
+
+    def test_display_post_process_reads_finished_hdr_frame(self):
+        args = ("--mode", "shadow", "--exposure", "-1", "--emission-strength", "64", "--bloom", "2")
+        image = self.frame(*args)
+        gray = self.frame(*args, "--post", "gray")
+        self.assertEqual(gray.getchannel("R").tobytes(), gray.getchannel("B").tobytes())
+        diff = ImageChops.difference(gray.getchannel("R"), image.convert("L"))
+        self.assertLessEqual(diff.getextrema()[1], 1)
+
+    def test_hdr_diagnostics_and_invalid_controls(self):
+        for mode in ("normal", "depth", "wire", "barycentric"):
+            plain = self.frame("--mode", mode)
+            hdr = self.frame("--mode", mode, "--exposure", "4", "--bloom", "1")
+            self.assertEqual(plain.tobytes(), hdr.tobytes(), mode)
+        for option, value in (("--exposure", "nan"), ("--exposure", "17"), ("--bloom", "-1"),
+                              ("--bloom", "2abc"), ("--emission-strength", "inf")):
+            result = subprocess.run([str(EXE), option, value, "--output", str(self.folder / "bad.tga")],
+                                    cwd=PROJECT, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, (option, value))
 
     def test_shadow_filter_preserves_planes_and_filters_cast_edges(self):
         # A gray receiver and a red square half a unit closer to the directional light.

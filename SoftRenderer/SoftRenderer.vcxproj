@@ -27,6 +27,7 @@
     <ClCompile Include="src\model2\Model2.cpp" />
     <ClCompile Include="src\model2\Primative.cpp" />
     <ClCompile Include="src\renderer\FrameBuffer.cpp" />
+    <ClCompile Include="src\renderer\Hdr.cpp" />
     <ClCompile Include="src\shader\DepthMap.cpp" />
     <ClCompile Include="src\shader\FlatShader.cpp" />
     <ClCompile Include="src\shader\GouraudShader.cpp" />
@@ -62,6 +63,7 @@
     <ClInclude Include="src\model2\Model2.h" />
     <ClInclude Include="src\model2\Primative.h" />
     <ClInclude Include="src\renderer\FrameBuffer.h" />
+    <ClInclude Include="src\texture\ColorSpace.h" />
     <ClInclude Include="src\shader\DepthMap.h" />
     <ClInclude Include="src\shader\FlatShader.h" />
     <ClInclude Include="src\shader\GouraudShader.h" />

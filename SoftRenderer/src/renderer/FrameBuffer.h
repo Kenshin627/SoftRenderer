@@ -1,7 +1,16 @@
 #pragma once
 #include <tgaimage/tgaimage.h>
+#include <glm/glm.hpp>
 #include <array>
 #include <vector>
+
+struct HdrSettings
+{
+	bool enabled = false;
+	float exposureEv = 0.0f;
+	float bloomStrength = 0.0f;
+	float emissionStrength = 1.0f;
+};
 
 struct FrameBuffer
 {
@@ -15,6 +24,10 @@ struct FrameBuffer
 	};
 	using SampleQuad = std::array<Sample, 4>;
 	std::vector<SampleQuad> samples;
+	// One linear RGB triplet per coverage sample, allocated only for HDR camera passes.
+	std::vector<glm::vec3> linearColor;
+	void WriteFragment(int x, int y, size_t pixel, int visibleMask, const float depths[4], const glm::vec3& rgb);
+	void FinishHdr(const HdrSettings& settings);
 	void FinishColor(bool visualizeDepth);
 	TGAImage colorAttachment;
 	TGAImage normalAttachment; // world-space normal * 0.5 + 0.5, for AO passes

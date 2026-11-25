@@ -18,8 +18,7 @@ bool MaterialPreviewShader::Fragment(glm::vec4& color)
 {
 	const auto& v = triangle.vertices;
 	glm::vec2 uv = baryCentric.x * v[0].uv + baryCentric.y * v[1].uv + baryCentric.z * v[2].uv;
-	glm::vec3 rgb = showEmission && !emissiveTexture ? glm::vec3(0.0f)
-		: Sampler2D(uv, showEmission ? emissiveTexture : diffuseTexture);
+	glm::vec3 rgb = showEmission ? SampleEmission(uv) : SampleColor(uv, diffuseTexture);
 	color = glm::vec4(rgb, 1.0f);
 	return false;
 }

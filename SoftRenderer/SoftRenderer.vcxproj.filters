@@ -27,6 +27,9 @@
     <ClCompile Include="src\renderer\FrameBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\Hdr.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="src\camera\Camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -126,6 +129,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\FrameBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\texture\ColorSpace.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="src\camera\Camera.h">

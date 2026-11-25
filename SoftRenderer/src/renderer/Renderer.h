@@ -62,6 +62,7 @@ public:
 	void SetShadowFilter(ShadowFilter value) { shadowFilter = value; }
 	void SetTextureFilter(TextureFilter value) { textureFilter = value; }
 	void SetNormalSource(NormalSource source) { normalSource = source; }
+	void SetHdr(const HdrSettings& settings) { hdr = settings; }
 	void SetMsaa(bool enabled);
 	void SetScanline(bool enabled) { scanline = enabled; }
 	const TGAImage& Image() const;
@@ -90,6 +91,7 @@ private:
 	NormalSource normalSource = NormalSource::Auto;
 	bool scanline = false;
 	bool msaa = false;
+	HdrSettings hdr;
 	//ambient occlusion state (static scene: computed once, applied per pixel afterwards)
 	AoMode aoMode = AoMode::Off;
 	bool aoComputed = false;

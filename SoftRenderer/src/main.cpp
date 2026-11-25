@@ -1,4 +1,5 @@
 #include "window/Window.h"
+#include <cmath>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -45,12 +46,23 @@ uint32_t parseShadowSize(const std::string& value)
 	return side;
 }
 
+float number(const std::string& option, const std::string& value, float low, float high)
+{
+	float result;
+	std::istringstream input(value);
+	if (!(input >> result) || !input.eof() || !std::isfinite(result) || result < low || result > high)
+		throw std::runtime_error(option + " expects a finite value in [" + std::to_string(low) + ", " + std::to_string(high) + "]");
+	return result;
+}
+
 void usage()
 {
 	std::cout << "SoftRenderer [--scene diablo|head|helmet | --model file.obj ...] [--size WIDTHxHEIGHT] [--output frame.tga]\n"
 		"  --mode albedo|emission|lit|wire|barycentric|flat|gouraud|smooth|phong|blinn|normal|shadow|toon|depth|pbr\n"
 		"  --filter nearest|bilinear|mipmap|trilinear   (default: nearest)\n"
 		"  --normals auto|vertex|object|tangent   --raster bbox|scanline   --msaa 1|4 (default: 1)\n"
+		"  --hdr   --exposure EV (-16..16)   --emission-strength N (0..1024)   --bloom N (0..16)\n"
+		"    HDR controls enable linear rendering. Defaults: EV 0, emission 1, bloom 0.\n"
 		"  --shadow-size auto|N (1..8192)   --shadow-filter hard|pcf   (defaults: auto, hard)\n"
 		"  --ao off|ssao|brute (phong/shadow)     --ao-map visibility.tga\n"
 		"  --post none|outline|gray|rgb|mosaic   (toon defaults to outline)\n";
@@ -67,6 +79,7 @@ int main(int argc, char* argv[])
 		TextureFilter filter = TextureFilter::Nearest;
 		ShadowFilter shadowFilter = ShadowFilter::Hard;
 		uint32_t shadowSize = 0;
+		HdrSettings hdr;
 		NormalSource normal = NormalSource::Auto;
 		auto ao = Renderer::AoMode::Off;
 		bool explicitPost = false, scanline = false, msaa = false;
@@ -75,6 +88,7 @@ int main(int argc, char* argv[])
 		{
 			std::string key = argv[i];
 			if (key == "--help") { usage(); return 0; }
+			if (key == "--hdr") { hdr.enabled = true; continue; }
 			if (++i == argc) throw std::runtime_error("missing value for " + key);
 			std::string value = argv[i];
 			if (key == "--scene") sceneName = value;
@@ -82,6 +96,13 @@ int main(int argc, char* argv[])
 			else if (key == "--mode") mode = choice(modes, value);
 			else if (key == "--post") { post = choice(effects, value); explicitPost = true; }
 			else if (key == "--filter") filter = choice(filters, value);
+			else if (key == "--exposure" || key == "--emission-strength" || key == "--bloom")
+			{
+				hdr.enabled = true;
+				if (key == "--exposure") hdr.exposureEv = number(key, value, -16, 16);
+				else if (key == "--bloom") hdr.bloomStrength = number(key, value, 0, 16);
+				else hdr.emissionStrength = number(key, value, 0, 1024);
+			}
 			else if (key == "--shadow-size") shadowSize = parseShadowSize(value);
 			else if (key == "--shadow-filter") shadowFilter = choice(shadowFilters, value);
 			else if (key == "--normals") normal = choice(normals, value);
@@ -150,6 +171,7 @@ int main(int argc, char* argv[])
 		renderer.SetAoMode(ao);
 		renderer.SetScanline(scanline);
 		renderer.SetMsaa(msaa);
+		renderer.SetHdr(hdr);
 		renderer.SetNormalSource(normal);
 		renderer.SetTextureFilter(filter);
 		renderer.SetShadowSize(shadowSize);

@@ -1,4 +1,5 @@
 #include "FrameBuffer.h"
+#include "../texture/ColorSpace.h"
 #include <algorithm>
 #include <limits>
 
@@ -26,6 +27,12 @@ void FrameBuffer::Reset()
 		background.fill({std::numeric_limits<float>::max(), clearColor.r, clearColor.g, clearColor.b});
 		std::fill(samples.begin(), samples.end(), background);
 	}
+	if (!linearColor.empty())
+	{
+		glm::vec3 clear(ColorSpace::DecodeSrgb(clearColor.r), ColorSpace::DecodeSrgb(clearColor.g),
+		                ColorSpace::DecodeSrgb(clearColor.b));
+		std::fill(linearColor.begin(), linearColor.end(), clear);
+	}
 	if (colorAttachment.get_width()) colorAttachment.clear();
 	if (clearColor.val != 0)
 	{
@@ -42,6 +49,35 @@ void FrameBuffer::Reset()
 		zBuffer[i] = std::numeric_limits<float>::max();
 	}
 }
+
+void FrameBuffer::WriteFragment(int x, int y, size_t pixel, int visibleMask, const float depths[4], const glm::vec3& rgb)
+{
+	const bool hdr = !linearColor.empty();
+	TGAColor encoded;
+	if (!hdr)
+	{
+		glm::vec3 bytes = glm::clamp(rgb, 0.0f, 1.0f) * 255.0f;
+		encoded = TGAColor(uint8_t(bytes.r), uint8_t(bytes.g), uint8_t(bytes.b), 255);
+	}
+	if (samples.empty())
+	{
+		if (hdr) linearColor[pixel] = rgb;
+		else colorAttachment.set(x, y, encoded);
+		return;
+	}
+	auto& quad = samples[pixel];
+	for (int i = 0; i < 4; ++i)
+	{
+		if (!(visibleMask & (1 << i))) continue;
+		if (hdr)
+		{
+			quad[i].depth = depths[i];
+			linearColor[4 * pixel + i] = rgb;
+		}
+		else quad[i] = {depths[i], encoded.r, encoded.g, encoded.b};
+	}
+}
+
 void FrameBuffer::FinishColor(bool visualizeDepth)
 {
 	if (samples.empty() && !visualizeDepth) return;

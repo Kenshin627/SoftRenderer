@@ -62,9 +62,9 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	glm::vec3 lightColor = light->Color();
 
 	//diffuse
-	glm::vec3 diffuseColor = Sampler2D(uv, diffuseTexture); //[0-1]
+	glm::vec3 albedo = SampleColor(uv, diffuseTexture);
 	float diffuse = glm::max(0.0f, glm::dot(lightDir, normal));
-	diffuseColor = diffuse * diffuseColor;
+	glm::vec3 diffuseColor = diffuse * albedo;
 
 	//specular
 	glm::vec3 viewDir = glm::normalize(camPos - worldPos);
@@ -78,17 +78,14 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	//ambient 0.4 matches the reference PhongShader; it is multiplied by the albedo
 	//(reference: color * (ambient + diffuse + specular)), keeping shadowed sides
 	//readable without the flat white wash of an unmodulated ambient
-	glm::vec3 ambientColor = 0.4f * Sampler2D(uv, diffuseTexture);
+	glm::vec3 ambientColor = 0.4f * albedo;
 
 	//emissive: _glow.tga self-illumination, unaffected by shadow/ao/light color (tutorial
 	//textures chapter mentions the _glow.tga incandescence maps); null falls back to black
 	//unlike albedo samplers (white fallback would white out untextured scenes)
-	glm::vec3 emissiveColor = emissiveTexture ? Sampler2D(uv, emissiveTexture) : glm::vec3(0.0f);
+	glm::vec3 emissiveColor = SampleEmission(uv);
 
 	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor * aoFactor) * lightColor + emissiveColor;
-	color.r = glm::min(1.0f, color.r);
-	color.g = glm::min(1.0f, color.g);
-	color.b = glm::min(1.0f, color.b);
 	gl_FragColor = { color, 1.0f };
 	return false;
 }
