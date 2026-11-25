@@ -23,13 +23,9 @@ Model2::Model2(const std::string& path)
     auto& shapes = reader.GetShapes();
     auto& mats = reader.GetMaterials();
 
-    size_t slash = path.find_last_of("/");
-    if (slash  == std::string::npos)
-    {
-        return;
-    }
-    ParseMaterial(mats, path.substr(0, slash) + reader_config.mtl_search_path);
-    
+    size_t slash = path.find_last_of("/\\");
+    ParseMaterial(mats, slash == std::string::npos ? "." : path.substr(0, slash));
+
     // tutorial assets (head/diablo/floor) ship no .mtl: fall back to the tinyrenderer
     // suffix convention (<model>_diffuse/_nm_tangent/_spec.tga) so they render textured
     std::shared_ptr<Material> fallbackMaterial = std::make_shared<Material>();
@@ -42,50 +38,51 @@ Model2::Model2(const std::string& path)
                 if (f.good()) fallbackMaterial.get()->*slot = std::make_shared<Texture>(file.c_str());
             };
             tryLoad(base + "_diffuse.tga", &Material::diffuse);
+            if (!fallbackMaterial->diffuse) tryLoad(base + "_diff.tga", &Material::diffuse);
+            tryLoad(base + "_nm.tga", &Material::objectNormal);
             tryLoad(base + "_nm_tangent.tga", &Material::normal);
             tryLoad(base + "_spec.tga", &Material::specular);
             tryLoad(base + "_glow.tga", &Material::emissive);
         }
     }
 
-    for (size_t s = 0; s < shapes.size(); s++) {
-        uint32_t nface = (uint32_t)shapes[s].mesh.num_face_vertices.size();
-        Primative primative { nface };
-        // fall back when the obj has no mtl / no material id, avoids out-of-range access
-        int matId = shapes[s].mesh.material_ids.empty() ? -1 : shapes[s].mesh.material_ids[0];
-        if (matId >= 0 && matId < (int)materials.size()) {
-            primative.SetMaterial(materials[matId]);
-        }
-        else {
-            primative.SetMaterial(fallbackMaterial);
-        }
-        size_t index_offset = 0;
-        for (size_t f = 0; f < nface; f++) {
-            size_t fv = size_t(shapes[s].mesh.num_face_vertices[f]);
-            
-            for (size_t v = 0; v < fv; v++) {
-              
-                tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
-                tinyobj::real_t vx = attrib.vertices[3 * size_t(idx.vertex_index) + 0];
-                tinyobj::real_t vy = attrib.vertices[3 * size_t(idx.vertex_index) + 1];
-                tinyobj::real_t vz = attrib.vertices[3 * size_t(idx.vertex_index) + 2];
-                primative.InerstPosition(f * 3 + v, vx, vy, vz);                
-                if (idx.normal_index >= 0) {
-                    tinyobj::real_t nx = attrib.normals[3 * size_t(idx.normal_index) + 0];
-                    tinyobj::real_t ny = attrib.normals[3 * size_t(idx.normal_index) + 1];
-                    tinyobj::real_t nz = attrib.normals[3 * size_t(idx.normal_index) + 2];
-                    primative.InsertNormal(f * 3 + v, nx, ny, nz);
+    for (const auto& shape : shapes) {
+        const auto& mesh = shape.mesh; // ObjReader triangulates polygons.
+        const size_t count = mesh.num_face_vertices.size();
+        size_t first = 0;
+        while (first < count) {
+            int id = mesh.material_ids[first];
+            size_t end = first + 1;
+            while (end < count && mesh.material_ids[end] == id) ++end;
+            primatives.emplace_back(end - first);
+            auto& primitive = primatives.back();
+            primitive.SetMaterial(id >= 0 && size_t(id) < materials.size() ? materials[id] : fallbackMaterial);
+            for (size_t face = first; face < end; ++face) {
+                glm::vec3 points[3];
+                for (int k = 0; k < 3; ++k) {
+                    const auto& index = mesh.indices[3 * face + k];
+                    const auto* p = &attrib.vertices.at(3 * size_t(index.vertex_index));
+                    points[k] = {p[0], p[1], p[2]};
                 }
-      
-                if (idx.texcoord_index >= 0) {
-                    tinyobj::real_t tx = attrib.texcoords[2 * size_t(idx.texcoord_index) + 0];
-                    tinyobj::real_t ty = attrib.texcoords[2 * size_t(idx.texcoord_index) + 1];
-                    primative.InsertUV(f * 3 + v, tx, 1.0f - ty);
+                glm::vec3 faceNormal = glm::cross(points[1] - points[0], points[2] - points[0]);
+                for (int k = 0; k < 3; ++k) {
+                    const auto& index = mesh.indices[3 * face + k];
+                    size_t corner = 3 * (face - first) + k;
+                    primitive.InerstPosition(corner, points[k].x, points[k].y, points[k].z);
+                    glm::vec3 normal = faceNormal;
+                    if (index.normal_index >= 0) {
+                        const auto* n = &attrib.normals.at(3 * size_t(index.normal_index));
+                        normal = {n[0], n[1], n[2]};
+                    }
+                    primitive.InsertNormal(corner, normal.x, normal.y, normal.z);
+                    if (index.texcoord_index >= 0) {
+                        const auto* uv = &attrib.texcoords.at(2 * size_t(index.texcoord_index));
+                        primitive.InsertUV(corner, uv[0], 1.0f - uv[1]);
+                    }
                 }
             }
-            index_offset += fv;
+            first = end;
         }
-        primatives.push_back(primative);
     }
 }
 
@@ -113,9 +110,14 @@ void Model2::ParseMaterial(const std::vector<tinyobj::material_t>& mats, const s
             material->specular = std::make_shared<Texture>((path + "/" + mat.specular_texname).c_str());
         }
 
-        if (!mat.bump_texname.empty())
+        if (!mat.emissive_texname.empty())
         {
-            material->normal = std::make_shared<Texture>((path + "/" + mat.bump_texname).c_str());
+            material->emissive = std::make_shared<Texture>((path + "/" + mat.emissive_texname).c_str());
+        }
+        const auto& normalMap = mat.normal_texname.empty() ? mat.bump_texname : mat.normal_texname;
+        if (!normalMap.empty())
+        {
+            material->normal = std::make_shared<Texture>((path + "/" + normalMap).c_str());
         }
 
         if (!mat.roughness_texname.empty())

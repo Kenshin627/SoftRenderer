@@ -2,6 +2,7 @@
 
 void FlatShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, unsigned gl_VertexIndex)
 {
+	triangle.vertices[gl_VertexIndex].position = model * glm::vec4(vertex.position, 1.0f);
 	gl_Position = viewProjection * model * glm::vec4(vertex.position, 1.0f);
 }
 

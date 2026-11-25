@@ -22,7 +22,8 @@ bool ToonEdgeShader::Fragment(glm::vec4& gl_FragColor)
 	{
 		px = glm::clamp(px, 0, w - 1);
 		py = glm::clamp(py, 0, h - 1);
-		return prePassDepth[px + py * w];
+		float depth = prePassDepth[px + py * w];
+		return depth == std::numeric_limits<float>::max() ? 2.0f : depth;
 	};
 	float gx = -depthAt(x - 1, y - 1) + depthAt(x + 1, y - 1)
 	           -2.0f * depthAt(x - 1, y) + 2.0f * depthAt(x + 1, y)

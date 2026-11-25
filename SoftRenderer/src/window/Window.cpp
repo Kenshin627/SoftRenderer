@@ -1,75 +1,34 @@
 #include "Window.h"
-#include <iostream>
 
-Window::Window(const char* title, uint32_t w, uint32_t h):width(w),height(h)
+Window::Window(const char* title, uint32_t width, uint32_t height)
 {
-	if (SDL_Init(SDL_INIT_VIDEO) != 0)
-	{
-		std::cout << "SDL init failed!" << std::endl;
-	}
+	if (SDL_Init(SDL_INIT_VIDEO) != 0) return;
 	windowHandle = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, 0);
-	drawHandle = SDL_CreateRenderer(windowHandle, -1, 0);
-	glm::mat3 yInverse =
-	{
-		{ 1, 0,  0 },
-		{ 0, -1, 0 },
-		{ 0, 0,  1 }
-	};
-	glm::mat3 translateH =
-	{
-		{ 1, 0,      0 },
-		{ 0, 1,      0 },
-		{ 0, height, 1 }
-	};
-	sdlTransform = translateH * yInverse;
+	if (windowHandle) drawHandle = SDL_CreateRenderer(windowHandle, -1, 0);
 }
 
 Window::~Window()
-{
-	ShutDowm();
-}
-
-void Window::ShutDowm()
 {
 	SDL_DestroyRenderer(drawHandle);
 	SDL_DestroyWindow(windowHandle);
 	SDL_Quit();
 }
 
-void Window::Run()
+bool Window::Show(const TGAImage& frame)
 {
-	while (!shouldClosed)
+	if (!drawHandle) return false;
+	SDL_Texture* texture = SDL_CreateTexture(drawHandle, SDL_PIXELFORMAT_BGR24, SDL_TEXTUREACCESS_STATIC,
+		frame.get_width(), frame.get_height());
+	if (!texture) return false;
+	bool ok = SDL_UpdateTexture(texture, nullptr, frame.buffer(), frame.get_width() * 3) == 0;
+	SDL_Event event;
+	while (ok)
 	{
-		SDL_Event event;
-		SDL_PollEvent(&event);
-		if (event.type == SDL_QUIT)
-		{
-			shouldClosed = true;
-			return;
-		}
-		Clear();
-		softRenderer->Clear();
-		softRenderer->Draw();
+		ok = SDL_RenderCopy(drawHandle, texture, nullptr, nullptr) == 0;
 		SDL_RenderPresent(drawHandle);
+		if (!SDL_WaitEvent(&event)) { ok = false; break; }
+		if (event.type == SDL_QUIT || (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)) break;
 	}
-}
-
-void Window::DrawPoint(int x, int y, const glm::vec3& color, bool flip)
-{
-	glm::vec2 sdlPoint;
-	if (flip)
-	{
-		sdlPoint = sdlTransform * glm::vec3(x, y, 1.0f);
-	}
-	else {
-		sdlPoint = glm::vec2(x, y);
-	}
-	SDL_SetRenderDrawColor(drawHandle, (Uint8)color.r, (Uint8)color.g, (Uint8)color.b, SDL_ALPHA_OPAQUE);
-	SDL_RenderDrawPoint(drawHandle, (int)sdlPoint.x, (int)sdlPoint.y);
-}
-
-void Window::Clear()
-{
-	SDL_SetRenderDrawColor(drawHandle, (Uint8)clearColor.r, (Uint8)clearColor.g, (Uint8)clearColor.b, SDL_ALPHA_OPAQUE);
-	SDL_RenderClear(drawHandle);
+	SDL_DestroyTexture(texture);
+	return ok;
 }

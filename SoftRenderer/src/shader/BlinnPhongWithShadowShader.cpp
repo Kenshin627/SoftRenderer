@@ -5,7 +5,7 @@ constexpr float SHADOW_BIAS = 5e-3f;
 
 void BlinnPhongWithShadowShader::Vertex(glm::vec4& gl_Position, const VertexAttribute& vertex, uint32_t vertexIndex)
 {
-	triangle.vertices[vertexIndex] = { model * glm::vec4(vertex.position, 1.0), glm::normalize(itModel * vertex.normal), vertex.uv, itModel * vertex.tangent, itModel * vertex.bitangent };
+	triangle.vertices[vertexIndex] = { model * glm::vec4(vertex.position, 1.0), glm::normalize(itModel * vertex.normal), vertex.uv, glm::mat3(model) * vertex.tangent, glm::mat3(model) * vertex.bitangent };
 	gl_Position = viewProjection * model * glm::vec4(vertex.position.x, vertex.position.y, vertex.position.z, 1.0);
 }
 
@@ -13,7 +13,7 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 {
 	glm::vec2 uv = baryCentric.x * triangle.vertices[0].uv + baryCentric.y * triangle.vertices[1].uv + baryCentric.z * triangle.vertices[2].uv;
 	glm::vec3 worldPos = baryCentric.x * triangle.vertices[0].position + baryCentric.y * triangle.vertices[1].position + baryCentric.z * triangle.vertices[2].position;
-	glm::vec3 worldNormal = glm::normalize(baryCentric.x * triangle.vertices[0].normal + baryCentric.y * triangle.vertices[1].normal + baryCentric.z * triangle.vertices[2].normal);
+
 
 	//计算阴影:把片元位置变换到光的屏幕空间(注意用阴影图自己的高分辨率 viewport),与存储深度比对
 	glm::vec4 lightSpacePos = shadowViewport * light->GetLightSpace().ViewProjection() * glm::vec4(worldPos, 1.0f);
@@ -22,7 +22,7 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	float z = lightSpacePos[2] / lightSpacePos[3];
 	float shadow = 1.0f;
 	//光视锥外视为点亮(同时避免 zBuffer 越界读)
-	if (x >= 0.0f && x < (float)shadowBuffer->width && y >= 0.0f && y < (float)shadowBuffer->height)
+	if (shadowBuffer && z >= -1.0f && z <= 1.0f && x >= 0.0f && x < (float)shadowBuffer->width && y >= 0.0f && y < (float)shadowBuffer->height)
 	{
 		uint32_t shadowIdx = (uint32_t)x + (uint32_t)y * shadowBuffer->width;
 		//深度比对加 bias 抑制 z-fighting(教程 shadow 章:比较深度时施加一个小的偏移)
@@ -32,15 +32,7 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 		}
 	}
 
-	//构造TBN:插值切线/副切线 + 插值法线 = 原始 Darboux 帧(与参考实现 D={t,b,n} 一致)
-	glm::vec3 N = worldNormal;
-	glm::vec3 T = glm::normalize(baryCentric.x * triangle.vertices[0].tangent + baryCentric.y * triangle.vertices[1].tangent + baryCentric.z * triangle.vertices[2].tangent);
-	glm::vec3 B = glm::normalize(baryCentric.x * triangle.vertices[0].bitangent + baryCentric.y * triangle.vertices[1].bitangent + baryCentric.z * triangle.vertices[2].bitangent);
-	glm::mat3 TBN = {
-		T, B, N
-	};
-	glm::vec3 samplerN = glm::normalize(Sampler2D(uv, tbnNormalTexture)) * 2.0f - 1.0f;
-	glm::vec3 normal = glm::normalize(TBN * samplerN);
+	glm::vec3 normal = SurfaceNormal(uv);
 
 	//光照方向取反，从像素出发
 	glm::vec3 lightDir = glm::normalize(-light->Direction());
@@ -54,7 +46,8 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	//specular
 	glm::vec3 viewDir = glm::normalize(camPos - worldPos);
 	glm::vec3 h = glm::normalize((viewDir + lightDir));
-	float specular = glm::pow(glm::max(0.0f, glm::dot(h, normal)), 128);
+	float alignment = reflectionPhong ? glm::dot(viewDir, glm::reflect(-lightDir, normal)) : glm::dot(h, normal);
+	float specular = diffuse > 0.0f ? glm::pow(glm::max(0.0f, alignment), reflectionPhong ? 32.0f : 128.0f) : 0.0f;
 	float samplerSpecular = Sampler2D(uv, specularTexture).b;//[0-1]
 	glm::vec3 specularColor = glm::vec3(samplerSpecular);
 	specularColor = specularColor * specular;
@@ -69,7 +62,7 @@ bool BlinnPhongWithShadowShader::Fragment(glm::vec4& gl_FragColor)
 	//unlike albedo samplers (white fallback would white out untextured scenes)
 	glm::vec3 emissiveColor = emissiveTexture ? Sampler2D(uv, emissiveTexture) : glm::vec3(0.0f);
 
-	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor) * lightColor * aoFactor + emissiveColor;
+	glm::vec3 color = ((diffuseColor + specularColor) * shadow + ambientColor * aoFactor) * lightColor + emissiveColor;
 	color.r = glm::min(1.0f, color.r);
 	color.g = glm::min(1.0f, color.g);
 	color.b = glm::min(1.0f, color.b);
