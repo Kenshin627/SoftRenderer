@@ -1,6 +1,6 @@
 # SoftRenderer
 
-用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 39 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附六张局部放大图，可对比模型轮廓、投影边缘、脚掌接地、自发光泛光，以及环境旋转时皮革和金属上的反射。点击任意图片可查看完整尺寸的 PNG。
+用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 43 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附七张局部放大图，可对比模型轮廓、投影边缘、脚掌接地、自发光泛光，环境旋转时皮革和金属上的反射，以及护目镜片的透明度。点击任意图片可查看完整尺寸的 PNG。
 
 **人头像 · Phong 与物体空间法线**
 
@@ -10,7 +10,7 @@
 
 [![Diablo 在棋盘地面上的投影](docs/screenshots/shadow.png)](docs/screenshots/shadow.png?raw=true)
 
-**Flight Helmet · PBR**
+**Flight Helmet · PBR（不透明镜片对照）**
 
 [![飞行头盔的皮革、金属与镜片](docs/screenshots/helmet.png)](docs/screenshots/helmet.png?raw=true)
 
@@ -26,7 +26,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 & $exe --scene diablo --mode toon
 & $exe --scene head --mode phong --normals object --size 2160x1560 --output head.tga
 & $exe --scene diablo --mode shadow --ao ssao --output lit.tga --ao-map visibility.tga
-& $exe --scene helmet --mode pbr --output helmet.tga
+& $exe --scene helmet --alpha opaque --mode pbr --output helmet.tga
 ```
 
 预设从当前工作目录下的 `resource/models` 加载资源。无参数时显示 1920 × 1080 的 Diablo 卡通场景，按 Esc 或关闭窗口退出。窗口模式写入 `output.tga`，启用后处理时另存 `postProcess.tga`。指定 `--output` 会直接写出最终帧并退出，适合批量截图。
@@ -47,6 +47,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 | 光照 | Flat 使用面法线，Gouraud 插值顶点光照，逐像素着色使用插值法线。Phong 用反射向量计算高光，Blinn–Phong 使用半程向量。 | `flat`、`gouraud`、`smooth`、`phong`、`blinn` |
 | 材质与法线 | 支持漫反射、高光、自发光，以及物体空间和切线空间法线贴图。可单独查看底色、发光区域或参与光照的世界空间法线。 | `--mode albedo`、`--mode emission`、`--mode normal --normals object` |
 | 纹理过滤 | 支持最近邻、双线性、单层 mipmap 与三线性。根据每个片元的屏幕空间 UV 梯度和当前贴图尺寸选择层级。 | `--filter nearest`、`bilinear`、`mipmap`、`trilinear` |
+| 透明材质 | 按材质读取不透明度，逐样本裁剪镂空表面及其投影，在线性 HDR 中合成多层半透明表面。 | `--alpha auto`、`--alpha mask --alpha-cutoff 0.5` |
 | 阴影与环境遮蔽 | 方向光使用独立分辨率的深度图，支持单点深度比较和 3×3 PCF。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
 | 基于图像的光照（IBL） | 从 HDR 全景图计算漫反射辐照度和随粗糙度变化的镜面反射，可旋转环境并调节光照强度。 | `--scene helmet --env studio --env-rotation 90` |
 | HDR、曝光与 Bloom | 在线性浮点颜色上合成光照、自发光与泛光，可调整曝光后导出 sRGB 图像。 | `--hdr`、`--exposure -2`、`--emission-strength 64 --bloom 1` |
@@ -79,7 +80,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 MSAA 作用于相机的三角形填充。深度预览按样本着色后合成，AO 和 Sobel 描边读取最近可见样本的深度。纹理缩小时可搭配 `--filter trilinear`。Bresenham 线框和光源深度图使用各自的单采样路径。
 
 ```powershell
-& $exe --scene helmet --mode pbr --size 2160x1560 --msaa 4 --output helmet-msaa4.tga
+& $exe --scene helmet --alpha opaque --mode pbr --size 2160x1560 --msaa 4 --output helmet-msaa4.tga
 ```
 
 **飞行头盔 · 4× MSAA 全图**（[打开同机位 1× 原图](docs/screenshots/helmet.png?raw=true)）
@@ -228,6 +229,44 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 
 [![棋盘地面使用三线性过滤](docs/screenshots/albedo-trilinear.png)](docs/screenshots/albedo-trilinear.png?raw=true)
 
+### 透明材质与镂空投影
+
+**Flight Helmet 的护目镜片**在左图中设为不透明，右图按镜片贴图中的 Alpha 混合。两图采用相同机位、摄影棚环境和曝光。右图能透过镜片看见后方支架，镜框和皮革的亮度保持一致。
+
+[![护目镜局部，左侧不透明，右侧按镜片不透明度混合](docs/screenshots/helmet-alpha-detail.png)](docs/screenshots/helmet-alpha-detail.png?raw=true)
+
+[![摄影棚光照下的半透明护目镜全图](docs/screenshots/helmet-alpha-blend.png)](docs/screenshots/helmet-alpha-blend.png?raw=true)
+
+[打开同机位的不透明镜片全图](docs/screenshots/helmet-ibl-0.png?raw=true)
+
+**镂空板与投影**使用同一块由两个三角形组成的板。第一张强制不透明，第二张启用遮罩。板上的十六个孔来自一张黑白贴图，左下方投影中对应的亮斑是穿过孔洞的直射光。两张图均使用 4× MSAA 和 2048² 阴影图。
+
+[![不透明板在棋盘上的完整投影](docs/screenshots/cutout-opaque.png)](docs/screenshots/cutout-opaque.png?raw=true)
+
+[![镂空板及穿过圆孔落在棋盘上的光斑](docs/screenshots/cutout-mask.png)](docs/screenshots/cutout-mask.png?raw=true)
+
+**两层色片**中，前方蓝片的不透明度为 0.65，后方橙片为 0.58。重叠区保留了两片的颜色和底层棋盘的明暗。交换两个材质的提交顺序后，深度排序产生相同结果。
+
+[![两层半透明色片及透过色片可见的棋盘](docs/screenshots/panes-blend.png)](docs/screenshots/panes-blend.png?raw=true)
+
+| 材质与选项 | 行为 |
+| --- | --- |
+| MTL `d`、`Tr` | `d` 表示不透明度，`Tr` 表示透明度。像素不透明度等于材质不透明度乘以贴图采样值。 |
+| MTL `map_d` | 优先读取显式不透明度贴图。默认对 RGBA 图取 A，对灰度或 RGB 图取亮度。可用 `-imfchan r`、`g`、`b` 或 `l` 指定通道。省略 `map_d` 时使用底色图自带的 A。`map_Kd` 和 `map_d` 共用图片时只应用一次不透明度。 |
+| `--alpha auto`（默认） | 根据原始纹素与材质系数判定。全为 1 时走不透明路径，仅有 0 和 1 时走遮罩路径，存在中间值时走混合路径。可在同一场景的 MTL 中用扩展字段 `alpha_mode mask` 将带灰边的树叶指定为遮罩，用 `alpha_mode blend` 指定玻璃。 |
+| `--alpha opaque`、`mask`、`blend` | 统一切换透明材质的处理方式，便于同机位对照。普通不透明表面继续参与深度测试与写入。 |
+| `--alpha-cutoff N` | 遮罩采样值小于 N 时丢弃，等于 N 时保留。默认 0.5，范围为 0 到 1。相机、方向光和 AO 深度使用相同阈值。 |
+
+不透明度作为线性数据参与最近邻、双线性、mipmap 或三线性过滤。开启 4× MSAA 后，每个覆盖样本独立判断是否通过遮罩。渲染器先写入不透明表面和通过遮罩的样本，再按相机空间三角形中心深度，从远到近绘制半透明表面。半透明样本测试已有深度，保留已有深度值，在浮点 HDR 缓冲中按 `α × 源颜色 + (1 − α) × 已有颜色` 合成。随后对 MSAA 样本取平均，并执行 Bloom、曝光和色调映射。
+
+半透明表面使用近似排序，共面、相交或循环遮挡的三角形可能出现错误覆盖。深度、法线、阴影及 AO 由不透明和遮罩表面决定，透明层采用颜色混合，尚未模拟折射和彩色透射阴影。
+
+```powershell
+& $exe --scene helmet --env studio --alpha auto --size 2160x1560 --output helmet-glass.tga
+& $exe --model resource/models/alpha/cutout.obj --mode shadow --alpha mask --alpha-cutoff 0.5 --filter bilinear --shadow-size 2048 --shadow-filter pcf --msaa 4 --size 2160x1560 --output cutout.tga
+& $exe --model resource/models/alpha/panes.obj --mode albedo --filter bilinear --msaa 4 --size 2160x1560 --output panes.tga
+```
+
 ### HDR、曝光与 Bloom
 
 下图固定 Diablo 的相机、材质、2048² PCF 阴影和 0 EV 曝光。从左到右，自发光强度依次为 **1×、8×、64×、64× 加 Bloom**。前三幅中，额头晶体和眼睛逐渐变亮，晶体里的纹路仍能分辨。第四幅只开启 Bloom，金黄色光晕扩散到眼眶和周围鳞片。四幅都截取全图的同一处 188 × 188 像素，放大两倍。
@@ -236,7 +275,7 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 
 | 参数 | 含义 | 默认值 |
 | --- | --- | --- |
-| `--hdr` | 开启线性浮点颜色管线。指定下面任一参数也会启用。 | 关闭 |
+| `--hdr` | 开启线性浮点颜色管线。指定下面任一参数也会启用。 | 显式开关关闭，PBR 环境光或半透明混合会自动启用 |
 | `--exposure EV` | 曝光补偿，范围 −16 到 +16。每提高 1 EV，进入色调映射的线性值翻倍。 | 0 EV |
 | `--emission-strength N` | 自发光贴图在线性空间的亮度倍率，范围 0 到 1024。 | 1 |
 | `--bloom N` | 泛光叠加强度，范围 0 到 16。设为 0 跳过泛光计算。 | 0 |
@@ -247,7 +286,7 @@ Bloom 从合成后的可见像素提取线性亮度超过 1 的部分，在半�
 
 ```powershell
 & $exe --scene diablo --mode shadow --shadow-size 2048 --shadow-filter pcf --hdr --emission-strength 64 --bloom 1 --size 2160x1560 --output bloom.tga
-& $exe --scene helmet --mode pbr --exposure -1 --output helmet-minus1.tga
+& $exe --scene helmet --alpha opaque --mode pbr --exposure -1 --output helmet-minus1.tga
 ```
 
 **Diablo · 64× 自发光、0 EV、Bloom 强度 1**
@@ -299,8 +338,8 @@ Bloom 从合成后的可见像素提取线性亮度超过 1 的部分，在半�
 | `--env-strength <倍率>` | 环境光强度，范围 0 到 1024，默认 1。设为 0 可单独查看直接光和材质自发光。 |
 
 ```powershell
-& $exe --scene helmet --env studio --env-rotation 90 --size 2160x1560 --output helmet-ibl.tga
-& $exe --scene helmet --mode pbr --env resource/environments/studio_small_09_1k.hdr --env-rotation 180 --env-strength 0.5 --output helmet-half.tga
+& $exe --scene helmet --alpha opaque --env studio --env-rotation 90 --size 2160x1560 --output helmet-ibl.tga
+& $exe --scene helmet --alpha opaque --mode pbr --env resource/environments/studio_small_09_1k.hdr --env-rotation 180 --env-strength 0.5 --output helmet-half.tga
 ```
 
 加载环境图时，程序按全景纹素覆盖的立体角生成浮点 mip 链。漫反射对可见半球做余弦加权积分，得到 64 × 32 的辐照度图（已除以 π）。镜面反射保留原图作为光滑端，另用 GGX 重要性采样预过滤五档粗糙度。着色时按材质粗糙度混合相邻两档，再由观察角和粗糙度查询 64 × 64 的 BRDF 积分表。这些预计算结果可以在同一进程中复用，旋转时只改变查询方向。[分离求和近似的推导与积分方法](https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf)
@@ -344,7 +383,7 @@ Bloom 从合成后的可见像素提取线性亮度超过 1 的部分，在半�
 
 ## 复现截图与测试
 
-在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO、卡通描边、线性颜色过滤、高光曝光、HDR 多重采样合成、遮挡后的 Bloom，以及环境光的方向、强度、粗糙度响应和全景图接缝。
+在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO、卡通描边、线性颜色过滤、高光曝光、HDR 多重采样合成、遮挡后的 Bloom，以及环境光的方向、强度、粗糙度响应和全景图接缝。透明材质测试还比较前后色片的线性合成值、逐样本遮挡、过滤后的裁剪阈值，以及贴图镂空和等形几何体的投影与 AO。
 
 ```powershell
 python -m pip install Pillow

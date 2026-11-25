@@ -6,10 +6,11 @@
 
 Texture::Texture(const char* path)
 {
-	int width = 0, height = 0;
+	int width = 0, height = 0, channels = 0;
 	std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
-		stbi_load(path, &width, &height, nullptr, STBI_rgb_alpha), stbi_image_free);
+		stbi_load(path, &width, &height, &channels, STBI_rgb_alpha), stbi_image_free);
 	if (!pixels) return;
+	hasAlpha = channels == 2 || channels == 4;
 	base.width = width;
 	base.height = height;
 	base.rgba.assign(pixels.get(), pixels.get() + size_t(width) * height * 4);
@@ -79,10 +80,43 @@ Texture::Level Texture::Level::Downsample(bool srgb) const
 	return dst;
 }
 
+float Texture::OpacityChannel(glm::vec4 rgba, char channel)
+{
+	switch (channel)
+	{
+	case 'r': return rgba.r;
+	case 'g': return rgba.g;
+	case 'b': return rgba.b;
+	case 'm': return rgba.a;
+	default:
+		if (rgba.r == rgba.g && rgba.g == rgba.b) return rgba.r;
+		return glm::dot(glm::vec3(rgba), glm::vec3(0.2126f, 0.7152f, 0.0722f));
+	}
+}
+
+AlphaMode Texture::ClassifyOpacity(char channel, float dissolve) const
+{
+	bool holes = false;
+	for (size_t i = 0; i < base.rgba.size(); i += 4)
+	{
+		const auto* p = base.rgba.data() + i;
+		float value = dissolve * OpacityChannel(glm::vec4(p[0], p[1], p[2], p[3]) / 255.0f, channel);
+		if (value > 0.0f && value < 1.0f) return AlphaMode::Blend;
+		holes |= value == 0.0f;
+	}
+	return holes ? AlphaMode::Mask : AlphaMode::Opaque;
+}
+
 glm::vec3 Texture::Sample(const glm::vec2& uv, TextureFilter filter,
 	const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb) const
 {
-	if (base.rgba.empty()) return glm::vec3(0);
+	return glm::vec3(SampleRgba(uv, filter, uvDx, uvDy, srgb));
+}
+
+glm::vec4 Texture::SampleRgba(const glm::vec2& uv, TextureFilter filter,
+	const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb) const
+{
+	if (base.rgba.empty()) return glm::vec4(0);
 	if (filter == TextureFilter::Nearest)
 	{
 		// Preserve the original nearest sampler's endpoint convention.
@@ -90,14 +124,14 @@ glm::vec3 Texture::Sample(const glm::vec2& uv, TextureFilter filter,
 			float wrapped = u == 1.0f ? 1.0f : glm::fract(u);
 			return int(glm::min(wrapped * size, float(size - 1)));
 		};
-		return glm::vec3(base.Texel(texel(uv.x, base.width), texel(uv.y, base.height), srgb)) / 255.0f;
+		return base.Texel(texel(uv.x, base.width), texel(uv.y, base.height), srgb) / 255.0f;
 	}
-	if (filter == TextureFilter::Bilinear) return glm::vec3(base.Bilinear(uv, srgb)) / 255.0f;
+	if (filter == TextureFilter::Bilinear) return base.Bilinear(uv, srgb) / 255.0f;
 
 	const glm::vec2 size(base.width, base.height);
 	const auto dx = uvDx * size, dy = uvDy * size;
 	const float footprint2 = glm::max(glm::dot(dx, dx), glm::dot(dy, dy));
-	if (footprint2 <= 1.0f) return glm::vec3(base.Bilinear(uv, srgb)) / 255.0f;
+	if (footprint2 <= 1.0f) return base.Bilinear(uv, srgb) / 255.0f;
 	auto& mips = srgb ? colorMips : rawMips;
 	std::call_once(srgb ? colorMipInit : rawMipInit, [this, srgb, &mips] {
 		std::vector<Level> chain;
@@ -112,10 +146,10 @@ glm::vec3 Texture::Sample(const glm::vec2& uv, TextureFilter filter,
 	const float lod = glm::min(0.5f * std::log2(footprint2), float(mips.size()));
 	auto level = [&](int i) -> const Level& { return i == 0 ? base : mips[i - 1]; };
 	if (filter == TextureFilter::Mipmap)
-		return glm::vec3(level(int(std::round(lod))).Bilinear(uv, srgb)) / 255.0f;
+		return level(int(std::round(lod))).Bilinear(uv, srgb) / 255.0f;
 	const int lower = int(lod);
 	const auto a = level(lower).Bilinear(uv, srgb);
 	const float blend = lod - lower;
-	if (blend == 0.0f) return glm::vec3(a) / 255.0f;
-	return glm::vec3(glm::mix(a, level(lower + 1).Bilinear(uv, srgb), blend)) / 255.0f;
+	if (blend == 0.0f) return a / 255.0f;
+	return glm::mix(a, level(lower + 1).Bilinear(uv, srgb), blend) / 255.0f;
 }

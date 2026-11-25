@@ -1,0 +1,14 @@
+newmtl Tiles
+map_Kd tiles.png
+
+newmtl Screen
+map_Kd screen.png
+map_d holes.png
+
+newmtl Blue
+d 0.65
+map_Kd palette.png
+
+newmtl Amber
+d 0.58
+map_Kd palette.png
