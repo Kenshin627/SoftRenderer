@@ -4,6 +4,8 @@
 #include <mutex>
 #include <vector>
 
+enum class AlphaMode { Auto, Opaque, Mask, Blend };
+
 enum class TextureFilter { Nearest, Bilinear, Mipmap, Trilinear };
 
 class Texture
@@ -14,6 +16,11 @@ public:
 	int GetWidth() const { return base.width; }
 	int GetHeight() const { return base.height; }
 	glm::vec4 Get(uint32_t x, uint32_t y) const;
+	bool HasAlpha() const { return hasAlpha; }
+	AlphaMode ClassifyOpacity(char channel, float dissolve) const;
+	glm::vec4 SampleRgba(const glm::vec2& uv, TextureFilter filter,
+		const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb = false) const;
+	static float OpacityChannel(glm::vec4 rgba, char channel);
 	glm::vec3 Sample(const glm::vec2& uv, TextureFilter filter,
 		const glm::vec2& uvDx, const glm::vec2& uvDy, bool srgb = false) const;
 private:
@@ -26,6 +33,7 @@ private:
 		Level Downsample(bool srgb) const;
 	};
 
+	bool hasAlpha = false;
 	Level base;
 	mutable std::once_flag rawMipInit, colorMipInit;
 	mutable std::vector<Level> rawMips, colorMips; // level 1 through the final 1x1 level

@@ -27,6 +27,7 @@ struct FrameBuffer
 	// One linear RGB triplet per coverage sample, allocated only for HDR camera passes.
 	std::vector<glm::vec3> linearColor;
 	void WriteFragment(int x, int y, size_t pixel, int visibleMask, const float depths[4], const glm::vec3& rgb);
+	void BlendFragment(size_t pixel, int visibleMask, const float alpha[4], const glm::vec3& rgb);
 	void FinishHdr(const HdrSettings& settings);
 	void FinishColor(bool visualizeDepth);
 	TGAImage colorAttachment;

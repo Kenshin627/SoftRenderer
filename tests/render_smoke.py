@@ -322,6 +322,147 @@ class RenderTests(unittest.TestCase):
                            cwd=self.folder).getpixel((80, 63))
         self.assertAlmostEqual(pixel[0], display_byte(128/255), delta=1)
 
+    def material(self, mesh, *lines):
+        path = self.folder / (mesh + ".obj")
+        geometry = path.read_text()
+        if not geometry.startswith("mtllib "):
+            path.write_text(f"mtllib {mesh}.mtl\nusemtl surface\n" + geometry)
+        (self.folder / (mesh + ".mtl")).write_text("\n".join(
+            ["newmtl surface", f"map_Kd {mesh}_diffuse.tga", *lines]) + "\n")
+
+    def test_alpha_blend_order_opaque_depth_and_msaa(self):
+        quad = [(1, 2, 3), (1, 3, 4)]
+        for name, color, distance, right in (("black", (0, 0, 0), 4, 125),
+                                             ("red", (255, 0, 0), 3, 120),
+                                             ("blue", (0, 0, 255), 2, 80.5),
+                                             ("green", (0, 255, 0), 1.5, 70)):
+            self.screen_mesh(name, [(35, 25), (right, 25), (right, 96), (35, 96)], quad, color, distance)
+        self.material("red", "d 0.5")
+        self.material("blue", "Tr 0.75")
+        models = ["black.obj", "blue.obj", "green.obj", "red.obj"]
+        for samples in ("1", "4"):
+            def render(order, raster):
+                args = [token for mesh in order for token in ("--model", mesh)]
+                return self.frame("--mode", "albedo", "--msaa", samples, "--raster", raster, *args,
+                                  cwd=self.folder)
+            image = render(models, "bbox")
+            self.assertEqual(image.tobytes(), render(reversed(models), "scanline").tobytes())
+            self.assertEqual(image.getpixel((55, 63)), (0, display_byte(1), 0))
+            self.assertEqual(image.getpixel((75, 63)), (display_byte(.375), 0, display_byte(.25)))
+            self.assertEqual(image.getpixel((95, 63)), (display_byte(.5), 0, 0))
+            if samples == "4":
+                self.assertEqual(image.getpixel((80, 63)), (display_byte(.4375), 0, display_byte(.125)))
+
+    def test_alpha_sources_are_linear_and_shared_alpha_applies_once(self):
+        self.filter_triangle(lambda x, y, q: (.5, .5))
+        Image.new("RGBA", (1, 1), (255, 255, 255, 128)).save(self.folder / "plane_diffuse.tga")
+        Image.new("L", (1, 1), 64).save(self.folder / "gray.png")
+        Image.new("RGB", (1, 1), (0, 32, 255)).save(self.folder / "rgb.png")
+        self.screen_mesh("black", [(20, 10), (140, 10), (80, 115)], [(1, 2, 3)], (0, 0, 0), 3)
+        for setting, opacity in (([], 128/255), (["map_d plane_diffuse.tga"], 128/255),
+                                 (["map_d gray.png"], 64/255), (["map_d -imfchan g rgb.png"], 32/255)):
+            self.material("plane", "d 0.5", *setting)
+            im = self.frame("--mode", "albedo", "--model", "plane.obj", "--model", "black.obj",
+                            cwd=self.folder)
+            self.assertEqual(im.getpixel((80, 63)), (display_byte(.5*opacity),)*3, setting)
+
+    def test_filtered_alpha_after_clipping_and_per_sample_cutoff(self):
+        alpha = Image.new("L", (8, 1))
+        alpha.putdata([0, 0, 0, 240, 0, 0, 0, 0])
+        alpha.save(self.folder / "opacity.png")
+        Image.new("RGB", (1, 1), "white").save(self.folder / "plane_diffuse.tga")
+        rate = .8 * 2**1.25 / 8
+        self.filter_triangle(lambda x, y, q: (.4375 + rate*y/q, .5))
+        self.material("plane", "map_d opacity.png", "alpha_mode mask")
+        for mode, expected in (("nearest", 240), ("bilinear", 240), ("mipmap", 90), ("trilinear", 76.875)):
+            for delta, pixel in ((-2, (255, 255, 255)), (2, (209, 195, 177))):
+                im = self.frame("--mode", "albedo", "--model", "plane.obj", "--filter", mode,
+                                "--alpha-cutoff", str((expected+delta)/255), cwd=self.folder)
+                self.assertEqual(im.getpixel((80, 63)), pixel, (mode, delta))
+        alpha = Image.new("L", (2, 1))
+        alpha.putdata([0, 255])
+        alpha.save(self.folder / "opacity.png")
+        self.filter_triangle(lambda x, y, q: (.5 + .12*x/q, .5))
+        self.material("plane", "map_d opacity.png")
+        self.screen_mesh("black", [(20, 10), (140, 10), (80, 115)], [(1, 2, 3)], (0, 0, 0), 3)
+        for raster in ("bbox", "scanline"):
+            im = self.frame("--mode", "albedo", "--model", "plane.obj", "--model", "black.obj",
+                            "--filter", "bilinear", "--msaa", "4", "--raster", raster, cwd=self.folder)
+            self.assertEqual(im.getpixel((80, 63)), (128, 128, 128))
+
+    def test_masked_shadow_matches_geometric_opening(self):
+        def panel(name, x0, y0, x1, y1, z, color):
+            xy = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+            rows = [f"v {x} {y} {z}" for x, y in xy] + ["vt 0 0", "vt 1 0", "vt 1 1", "vt 0 1",
+                                                         "f 1/1 2/2 3/3", "f 1/1 3/3 4/4"]
+            (self.folder / (name+".obj")).write_text("\n".join(rows))
+            Image.new("RGB", (1, 1), color).save(self.folder / (name+"_diffuse.tga"))
+            self.material(name, "map_Ks black.png")
+        Image.new("L", (1, 1), 0).save(self.folder / "black.png")
+        panel("receiver", -3, -3, 3, 3, 0, (200, 200, 200))
+        panel("masked", -.2, -.2, .6, .6, .5, (180, 0, 0))
+        panel("half", -.2, -.2, .2, .6, .5, (180, 0, 0))
+        mask = Image.new("L", (2, 1))
+        mask.putdata([255, 0])
+        mask.save(self.folder / "cut.png")
+        self.material("masked", "map_d cut.png", "map_Ks black.png")
+        def render(name, mode, *options):
+            return self.frame("--mode", mode, "--model", name+".obj", "--model", "receiver.obj",
+                              "--shadow-size", "512", *options, size="321x241", cwd=self.folder)
+        for filtering in ("hard", "pcf"):
+            expected = render("half", "shadow", "--shadow-filter", filtering)
+            actual = render("masked", "shadow", "--shadow-filter", filtering)
+            shadow = ImageChops.difference(expected, render("half", "lit")).getchannel("G")
+            self.assertGreater(sum(shadow.histogram()[1:]), 100)
+            diff = ImageChops.difference(actual, expected)
+            errors = sum(count for count, color in diff.getcolors(diff.width * diff.height) if any(color))
+            self.assertLess(errors, 20, (filtering, errors))
+        for ao in ("ssao", "brute"):
+            target = self.folder / "ao.tga"
+            def visibility(name):
+                render(name, "shadow", "--ao", ao, "--ao-map", str(target))
+                with Image.open(target) as im:
+                    return im.copy()
+            diff = ImageChops.difference(visibility("masked"), visibility("half"))
+            self.assertLess(ImageStat.Stat(diff).mean[0], .2)
+
+    def test_blended_material_preserves_depth_shadows_and_ao(self):
+        # The cutout fixture has a receiver and a floating card. Keep the same geometry
+        # and camera for all runs, varying only the opacity of the card.
+        assets = PROJECT / "resource/models/alpha"
+        for filename in ("cutout.obj", "tiles.png", "screen.png", "holes.png"):
+            (self.folder / filename).write_bytes((assets / filename).read_bytes())
+        mtl = self.folder / "panels.mtl"
+        materials = (assets / "panels.mtl").read_text().split("newmtl Blue")[0]
+        ao_path = self.folder / "ao.tga"
+        def render(dissolve, mode, *options):
+            mtl.write_text(materials.replace("map_d holes.png", f"d {dissolve}\nalpha_mode blend"))
+            return self.frame("--model", "cutout.obj", "--mode", mode, "--hdr", "--msaa", "4",
+                              *options, cwd=self.folder)
+        self.assertEqual(render(0, "depth").tobytes(), render(.6, "depth").tobytes())
+        for ao in ("ssao", "brute"):
+            args = ("--ao", ao, "--ao-map", str(ao_path), "--shadow-size", "256")
+            bare = render(0, "shadow", *args)
+            with Image.open(ao_path) as im:
+                ao_without_card = im.tobytes()
+            glass = render(.6, "shadow", *args)
+            with Image.open(ao_path) as im:
+                self.assertEqual(ao_without_card, im.tobytes())
+            self.assertNotEqual(glass.tobytes(), bare.tobytes())
+            lit_change = ImageChops.difference(render(0, "lit"), render(.6, "lit"))
+            # Color may change only on the card, including with AO and shadows enabled.
+            shadow_change = ImageChops.difference(bare, glass)
+            self.assertEqual(shadow_change.getbbox(), lit_change.getbbox())
+            coverage = lit_change.convert("L").point(lambda value: 255 if value else 0)
+            self.assertIsNone(Image.composite(Image.new("RGB", bare.size), shadow_change, coverage).getbbox())
+
+    def test_alpha_rejects_invalid_controls(self):
+        for option, value in (("--alpha", "glass"), ("--alpha-cutoff", "-0.01"),
+                              ("--alpha-cutoff", "1.1"), ("--alpha-cutoff", "nan")):
+            result = subprocess.run([str(EXE), option, value, "--output", str(self.folder / "bad.tga")],
+                                    cwd=PROJECT, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, (option, value))
+
     def ibl_material(self, normal, orm, albedo=(255, 255, 255)):
         # The center camera ray hits the origin. Assign one known shading normal to the triangle.
         (self.folder / "ibl.obj").write_text(

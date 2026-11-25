@@ -60,7 +60,8 @@ public:
 	static constexpr uint32_t MaxShadowSize = 8192;
 	void SetShadowSize(uint32_t side); // 0 follows the camera viewport
 	void SetShadowFilter(ShadowFilter value) { shadowFilter = value; }
-	void SetTextureFilter(TextureFilter value) { textureFilter = value; }
+	void SetTextureFilter(TextureFilter value);
+	void SetAlpha(AlphaMode mode, float cutoff);
 	void SetNormalSource(NormalSource source) { normalSource = source; }
 	void SetHdr(const HdrSettings& settings) { hdr = settings; }
 	void SetMsaa(bool enabled);
@@ -72,6 +73,9 @@ private:
 	void BresenhamLine(glm::ivec2 a, glm::ivec2 b);
 	void RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& target, const glm::vec2* uvs);
 	void RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr<FrameBuffer>& target);
+	void BindMaterial(const Material& material);
+	void DrawSurfaceFace(const Primative& mesh, size_t face);
+	bool HasBlendedMaterial() const;
 	void ComputeSsao();
 	void BlurAo();
 	void ComputeBruteForceAo();
@@ -87,6 +91,10 @@ private:
 	std::shared_ptr<FrameBuffer> shadowPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> postProcessBuffer;
 	ShaderType surface = ShaderType::Toon;
+	AlphaMode alphaOverride = AlphaMode::Auto;
+	float alphaCutoff = 0.5f;
+	const Material* activeMaterial = nullptr;
+	AlphaMode activeAlpha = AlphaMode::Opaque;
 	TextureFilter textureFilter = TextureFilter::Nearest;
 	NormalSource normalSource = NormalSource::Auto;
 	bool scanline = false;

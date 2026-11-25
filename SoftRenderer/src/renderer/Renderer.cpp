@@ -110,27 +110,26 @@ void Renderer::RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr
 	activeShader->model = glm::mat4(1.0f);
 	activeShader->viewProjection = viewProjection;
 	glm::vec4 clipCoords[3];
-	const std::vector<Model2>& models = activeScene->GetModels();
-	size_t modelCount = models.size();
-	for (size_t i = 0; i < modelCount; i++)
-	{
-		const Model2& model = models[i];
-		const std::vector<Primative>& primatives = model.GetAllPrimatives();
-		for (size_t p = 0; p < primatives.size(); p++)
+	for (const auto& model : activeScene->GetModels())
+		for (const auto& mesh : model.GetAllPrimatives())
 		{
-			const Primative& primative = primatives[p];
-			size_t nface = primative.getNface();
-			for (size_t j = 0; j < nface; j++)
+			activeMaterial = mesh.GetMaterial().get();
+			activeAlpha = activeMaterial->Mode(alphaOverride);
+			if (activeAlpha == AlphaMode::Blend) continue;
+			for (size_t face = 0; face < mesh.getNface(); ++face)
 			{
-				for (size_t k = 0; k < 3; k++)
+				glm::vec2 uvs[3];
+				for (size_t k = 0; k < 3; ++k)
 				{
-					VertexAttribute vertex{ primative.GetPosition(j, k), primative.GetNormal(j, k), primative.GetUV(j, k) };
-					activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
+					uvs[k] = mesh.GetUV(face, k);
+					VertexAttribute vertex{ mesh.GetPosition(face, k), mesh.GetNormal(face, k), uvs[k] };
+					activeShader->Vertex(clipCoords[k], vertex, uint32_t(k));
 				}
-				Rasterize(clipCoords, target);
+				Rasterize(clipCoords, target, activeAlpha == AlphaMode::Mask ? uvs : nullptr);
 			}
 		}
-	}
+	activeMaterial = nullptr;
+	activeAlpha = AlphaMode::Opaque;
 }
 
 void Renderer::DefaultPass()
@@ -140,7 +139,6 @@ void Renderer::DefaultPass()
 	activeShader->textureFilter = textureFilter;
 	activeShader->hdr = !defaultPassFrameBuffer->linearColor.empty();
 	activeShader->emissionStrength = activeShader->hdr ? hdr.emissionStrength : 1.0f;
-	const bool needsGradients = textureFilter == TextureFilter::Mipmap || textureFilter == TextureFilter::Trilinear;
 	activeShader->light = activeScene->GetLight();
 	activeShader->environment = activeScene->GetEnvironment();
 	activeShader->pointLights = activeScene->GetPointLights();
@@ -155,62 +153,117 @@ void Renderer::DefaultPass()
 		activeShader->worldToShadow = shadowViewport.transform * activeShader->light->GetLightSpace().ViewProjection();
 		activeShader->shadowFilter = shadowFilter;
 	}
+	struct TransparentFace
+	{
+		const Primative* mesh;
+		size_t face;
+		float viewDepth;
+	};
+	std::vector<TransparentFace> transparent;
+	const bool showBlend = !defaultPassFrameBuffer->linearColor.empty() && (aoMode == AoMode::Off || aoComputed);
+	const glm::mat4 modelView = activeScene->GetCamera()->View() * activeShader->model;
+	for (const auto& model : activeScene->GetModels())
+		for (const auto& mesh : model.GetAllPrimatives())
+		{
+			const auto& material = *mesh.GetMaterial();
+			if (material.Mode(alphaOverride) == AlphaMode::Blend)
+			{
+				if (!showBlend) continue;
+				for (size_t face = 0; face < mesh.getNface(); ++face)
+				{
+					glm::vec3 center = (mesh.GetPosition(face, 0) + mesh.GetPosition(face, 1) + mesh.GetPosition(face, 2)) / 3.0f;
+					transparent.push_back({ &mesh, face, -(modelView * glm::vec4(center, 1.0f)).z });
+				}
+				continue;
+			}
+			BindMaterial(material);
+			for (size_t face = 0; face < mesh.getNface(); ++face) DrawSurfaceFace(mesh, face);
+		}
+
+	std::stable_sort(transparent.begin(), transparent.end(), [](const TransparentFace& a, const TransparentFace& b) {
+		return a.viewDepth > b.viewDepth;
+	});
+	for (const auto& item : transparent)
+	{
+		const auto& material = *item.mesh->GetMaterial();
+		if (activeMaterial != &material) BindMaterial(material);
+		DrawSurfaceFace(*item.mesh, item.face);
+	}
+	activeMaterial = nullptr;
+	activeAlpha = AlphaMode::Opaque;
+	activeShader->environment.reset();
+}
+
+void Renderer::BindMaterial(const Material& material)
+{
+	activeMaterial = &material;
+	activeAlpha = material.Mode(alphaOverride);
+	activeShader->SetSampler(0, material.diffuse);
+	activeShader->SetSampler(1, material.specular);
+	activeShader->SetSampler(2, material.normal);
+	activeShader->SetSampler(3, material.ao);
+	activeShader->SetSampler(4, material.roughness);
+	activeShader->SetSampler(5, material.metalness);
+	activeShader->objectNormalTexture = material.objectNormal;
+	activeShader->SetSampler(6, material.emissive);
+}
+
+void Renderer::DrawSurfaceFace(const Primative& mesh, size_t face)
+{
 	glm::vec4 clipCoords[3];
 	glm::vec3 localPosition[3];
 	glm::vec2 uvs[3];
-	const std::vector<Model2>& models = activeScene->GetModels();
-	size_t modelCount = models.size();
-	for (size_t i = 0; i < modelCount; i++)
+	const bool needsUvs = activeAlpha != AlphaMode::Opaque || textureFilter == TextureFilter::Mipmap
+		|| textureFilter == TextureFilter::Trilinear;
+	glm::vec3 normals[3];
+	for (size_t k = 0; k < 3; k++)
 	{
-		const Model2& model = models[i];
-		const std::vector<Primative>& primatives = model.GetAllPrimatives();
-		size_t primativeCount = primatives.size();
-		for (size_t p = 0; p < primativeCount; p++)
-		{
-			const Primative& primative = primatives[p];
-			size_t nface = primative.getNface();
-			activeShader->SetSampler(0, primative.GetMaterial()->diffuse);
-			activeShader->SetSampler(1, primative.GetMaterial()->specular);
-			activeShader->SetSampler(2, primative.GetMaterial()->normal);
-			activeShader->SetSampler(3, primative.GetMaterial()->ao);
-			activeShader->SetSampler(4, primative.GetMaterial()->roughness);
-			activeShader->SetSampler(5, primative.GetMaterial()->metalness);
-			activeShader->objectNormalTexture = primative.GetMaterial()->objectNormal;
-			activeShader->SetSampler(6, primative.GetMaterial()->emissive);
-			for (size_t j = 0; j < nface; j++)
-			{
-				glm::vec3 normals[3];
-				for (size_t k = 0; k < 3; k++)
-				{
-					localPosition[k] = primative.GetPosition(j, k);
-					normals[k] = primative.GetNormal(j, k);
-					uvs[k] = primative.GetUV(j, k);
-				}
-				// per-face tangent frame (t b) = U^-1 * E (tutorial tangent chapter);
-				// face corners are duplicated per triangle, so all three corners share
-				// it and the barycentric interpolation carries it like any other varying
-				glm::vec3 e1 = localPosition[1] - localPosition[0];
-				glm::vec3 e2 = localPosition[2] - localPosition[0];
-				glm::vec2 d1 = uvs[1] - uvs[0];
-				glm::vec2 d2 = uvs[2] - uvs[0];
-				float uvDet = d1.x * d2.y - d2.x * d1.y;
-				glm::vec3 tangent(0.0f), bitangent(0.0f);
-				if (std::abs(uvDet) > 1e-8f)
-				{
-					tangent = (e1 * d2.y - e2 * d1.y) / uvDet;
-					// OBJ v was flipped for image addressing. Restore its sign for the tangent frame.
-					bitangent = (e1 * d2.x - e2 * d1.x) / uvDet;
-				}
-				for (size_t k = 0; k < 3; k++)
-				{
-					VertexAttribute vertex{ localPosition[k], normals[k], uvs[k], tangent, bitangent };
-					activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
-				}
-				Rasterize(clipCoords, defaultPassFrameBuffer, needsGradients ? uvs : nullptr);
-			}
-		}
+		localPosition[k] = mesh.GetPosition(face, k);
+		normals[k] = mesh.GetNormal(face, k);
+		uvs[k] = mesh.GetUV(face, k);
 	}
-	activeShader->environment.reset();
+	// Each of the three corners shares the tangent frame derived from the face's UVs.
+	glm::vec3 e1 = localPosition[1] - localPosition[0];
+	glm::vec3 e2 = localPosition[2] - localPosition[0];
+	glm::vec2 d1 = uvs[1] - uvs[0];
+	glm::vec2 d2 = uvs[2] - uvs[0];
+	float uvDet = d1.x * d2.y - d2.x * d1.y;
+	glm::vec3 tangent(0.0f), bitangent(0.0f);
+	if (std::abs(uvDet) > 1e-8f)
+	{
+		tangent = (e1 * d2.y - e2 * d1.y) / uvDet;
+		// OBJ v was flipped for image addressing. Restore its sign for the tangent frame.
+		bitangent = (e1 * d2.x - e2 * d1.x) / uvDet;
+	}
+	for (size_t k = 0; k < 3; k++)
+	{
+		VertexAttribute vertex{ localPosition[k], normals[k], uvs[k], tangent, bitangent };
+		activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
+	}
+	Rasterize(clipCoords, defaultPassFrameBuffer, needsUvs ? uvs : nullptr);
+}
+
+bool Renderer::HasBlendedMaterial() const
+{
+	for (const auto& model : activeScene->GetModels())
+		for (const auto& mesh : model.GetAllPrimatives())
+			if (mesh.GetMaterial()->Mode(alphaOverride) == AlphaMode::Blend) return true;
+	return false;
+}
+
+void Renderer::SetAlpha(AlphaMode mode, float cutoff)
+{
+	if (mode == alphaOverride && cutoff == alphaCutoff) return;
+	alphaOverride = mode;
+	alphaCutoff = cutoff;
+	SetAoMode(aoMode);
+}
+
+void Renderer::SetTextureFilter(TextureFilter value)
+{
+	if (value == textureFilter) return;
+	textureFilter = value;
+	SetAoMode(aoMode);
 }
 
 void Renderer::PostProcess()
@@ -273,8 +326,9 @@ void Renderer::Draw()
 	const size_t pixels = size_t(viewport.width) * viewport.height;
 	const bool multi = msaa && surface != ShaderType::Lines;
 	const bool environmentPbr = activeScene->GetEnvironment() && (surface == ShaderType::PBR || surface == ShaderType::PBR2);
-	const bool useHdr = (environmentPbr || hdr.enabled) && surface != ShaderType::Lines && surface != ShaderType::DepthMap
-		&& surface != ShaderType::NormalMap && surface != ShaderType::BarycentricColor;
+	const bool useHdr = surface != ShaderType::Lines && surface != ShaderType::DepthMap
+		&& surface != ShaderType::NormalMap && surface != ShaderType::BarycentricColor
+		&& (hdr.enabled || environmentPbr || HasBlendedMaterial());
 	defaultPassFrameBuffer->samples.resize(multi ? pixels : 0);
 	defaultPassFrameBuffer->linearColor.resize(useHdr ? pixels * (multi ? 4 : 1) : 0);
 	Clear();
@@ -694,6 +748,14 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 		hDy = ((h[2] - h[0]) * e1.x - (h[1] - h[0]) * e2.x) / signedArea2;
 	}
 
+	const glm::vec3 clipW(vertices[0].w, vertices[1].w, vertices[2].w);
+	auto sampleUv = [&](const glm::vec3& bary, float reciprocalW, glm::vec2& dx, glm::vec2& dy) {
+		glm::vec2 uv = bary.x * uvs[0] + bary.y * uvs[1] + bary.z * uvs[2];
+		dx = (glm::vec2(hDx) - uv * hDx.z) / reciprocalW;
+		dy = (glm::vec2(hDy) - uv * hDy.z) / reciprocalW;
+		return uv;
+	};
+
 	BoundingBox bbox = GetBoundingBox(afterClippedCoords, currentBuffer->width, currentBuffer->height);
 	for (uint32_t y = (uint32_t)bbox.min.y; y <= (uint32_t)bbox.max.y; y++)
 	{
@@ -706,6 +768,7 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 			const size_t index = x + size_t(y) * currentBuffer->width;
 			auto* quad = multi ? &currentBuffer->samples[index] : nullptr;
 			glm::vec3 centroid(0.0f), closestWeights(0.0f);
+			float alpha[4];
 			float depths[4], closest = currentBuffer->zBuffer[index];
 			int covered = 0, visibleMask = 0;
 			for (int i = 0; i < sampleCount; ++i)
@@ -718,6 +781,16 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 				++covered;
 				depths[i] = glm::dot(weights, ndcZ);
 				if (depths[i] >= (multi ? (*quad)[i].depth : currentBuffer->zBuffer[index])) continue;
+				if (activeAlpha != AlphaMode::Opaque)
+				{
+					glm::vec3 q = weights / clipW;
+					float reciprocalW = q.x + q.y + q.z;
+					glm::vec2 dx, dy;
+					glm::vec2 uv = sampleUv(sourceWeights * (q / reciprocalW), reciprocalW, dx, dy);
+					alpha[i] = activeMaterial->SampleOpacity(uv, textureFilter, dx, dy);
+					if (activeAlpha == AlphaMode::Mask && alpha[i] < alphaCutoff) continue;
+					if (activeAlpha == AlphaMode::Blend && alpha[i] <= 0.0f) continue;
+				}
 				visibleMask |= 1 << i;
 				if (depths[i] < closest) { closest = depths[i]; closestWeights = weights; }
 			}
@@ -731,20 +804,19 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 			// Shade once per primitive/pixel at the centroid of geometric coverage.
 			// Occlusion by an earlier draw must not change the interpolation point.
 			glm::vec3 bc = centroid / float(covered);
-			const glm::vec3 clipW(vertices[0].w, vertices[1].w, vertices[2].w);
 			bc /= clipW;
 			const float reciprocalW = bc.x + bc.y + bc.z;
 			bc = sourceWeights * (bc / reciprocalW);
 			activeShader->baryCentric = bc;
-			if (uvs)
-			{
-				const glm::vec2 uv = bc.x * uvs[0] + bc.y * uvs[1] + bc.z * uvs[2];
-				activeShader->uvDx = (glm::vec2(hDx) - uv * hDx.z) / reciprocalW;
-				activeShader->uvDy = (glm::vec2(hDy) - uv * hDy.z) / reciprocalW;
-			}
+			if (uvs) sampleUv(bc, reciprocalW, activeShader->uvDx, activeShader->uvDy);
 			activeShader->aoFactor = aoBuffer.empty() ? 1.0f : aoBuffer[index];
 			glm::vec4 fragment;
 			if (activeShader->Fragment(fragment)) continue;
+			if (activeAlpha == AlphaMode::Blend)
+			{
+				currentBuffer->BlendFragment(index, visibleMask, alpha, glm::vec3(fragment));
+				continue;
+			}
 			currentBuffer->WriteFragment(x, y, index, visibleMask, depths, glm::vec3(fragment));
 
 			if (closest < currentBuffer->zBuffer[index])

@@ -78,6 +78,17 @@ void FrameBuffer::WriteFragment(int x, int y, size_t pixel, int visibleMask, con
 	}
 }
 
+void FrameBuffer::BlendFragment(size_t pixel, int visibleMask, const float alpha[4], const glm::vec3& rgb)
+{
+	const int count = samples.empty() ? 1 : 4;
+	for (int i = 0; i < count; ++i)
+	{
+		if (!(visibleMask & (1 << i))) continue;
+		auto& destination = linearColor[pixel * count + i];
+		destination = glm::mix(destination, rgb, alpha[i]);
+	}
+}
+
 void FrameBuffer::FinishColor(bool visualizeDepth)
 {
 	if (samples.empty() && !visualizeDepth) return;

@@ -1,6 +1,8 @@
 #include "Model2.h"
 #include <iostream>
 #include <fstream>
+#include <stdexcept>
+#include <sstream>
 
 Model2::Model2(const std::string& path)
 {
@@ -44,6 +46,9 @@ Model2::Model2(const std::string& path)
             tryLoad(base + "_glow.tga", &Material::emissive);
         }
     }
+
+    if (fallbackMaterial->diffuse && fallbackMaterial->diffuse->HasAlpha())
+        fallbackMaterial->ConfigureOpacity(1.0f, fallbackMaterial->diffuse, 'm', AlphaMode::Auto);
 
     for (const auto& shape : shapes) {
         const auto& mesh = shape.mesh; // ObjReader triangulates polygons.
@@ -128,6 +133,28 @@ void Model2::ParseMaterial(const std::vector<tinyobj::material_t>& mats, const s
         {
             material->metalness = std::make_shared<Texture>((path + "/" + mat.metallic_texname).c_str());
         }
+        std::shared_ptr<Texture> opacityMap;
+        if (!mat.alpha_texname.empty())
+        {
+            opacityMap = mat.alpha_texname == mat.diffuse_texname ? material->diffuse
+                : std::make_shared<Texture>((path + "/" + mat.alpha_texname).c_str());
+            if (!opacityMap || !opacityMap->GetWidth())
+                throw std::runtime_error("cannot read opacity map: " + mat.alpha_texname);
+        }
+        else if (material->diffuse && material->diffuse->HasAlpha()) opacityMap = material->diffuse;
+
+        AlphaMode alpha = AlphaMode::Auto;
+        const auto setting = mat.unknown_parameter.find("alpha_mode");
+        if (setting != mat.unknown_parameter.end())
+        {
+            std::string name;
+            std::istringstream(setting->second) >> name;
+            if (name == "opaque") alpha = AlphaMode::Opaque;
+            else if (name == "mask") alpha = AlphaMode::Mask;
+            else if (name == "blend") alpha = AlphaMode::Blend;
+            else if (name != "auto") throw std::runtime_error("unknown material alpha_mode: " + name);
+        }
+        material->ConfigureOpacity(mat.dissolve, opacityMap, mat.alpha_texname.empty() ? 'm' : mat.alpha_texopt.imfchan, alpha);
         materials.push_back(material);
     }       
 }

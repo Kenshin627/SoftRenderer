@@ -19,6 +19,9 @@ const std::map<std::string, TextureFilter> filters = {
 	{"nearest", TextureFilter::Nearest}, {"bilinear", TextureFilter::Bilinear},
 	{"mipmap", TextureFilter::Mipmap}, {"trilinear", TextureFilter::Trilinear}
 };
+const std::map<std::string, AlphaMode> alphaModes = {
+	{"auto", AlphaMode::Auto}, {"opaque", AlphaMode::Opaque}, {"mask", AlphaMode::Mask}, {"blend", AlphaMode::Blend}
+};
 const std::map<std::string, ShadowFilter> shadowFilters = {
 	{"hard", ShadowFilter::Hard}, {"pcf", ShadowFilter::PCF}
 };
@@ -69,6 +72,7 @@ void usage()
 		"    HDR controls enable linear rendering. Defaults: EV 0, emission 1, bloom 0.\n"
 		"  --env studio|panorama.hdr   --env-rotation DEGREES   --env-strength N (0..1024)\n"
 		"    Environment lighting selects PBR and enables HDR. Defaults: rotation 0, strength 1.\n"
+		"  --alpha auto|opaque|mask|blend   --alpha-cutoff N (0..1, default 0.5)\n"
 		"  --shadow-size auto|N (1..8192)   --shadow-filter hard|pcf   (defaults: auto, hard)\n"
 		"  --ao off|ssao|brute (phong/shadow)     --ao-map visibility.tga\n"
 		"  --post none|outline|gray|rgb|mosaic   (toon defaults to outline)\n";
@@ -85,6 +89,8 @@ int main(int argc, char* argv[])
 		TextureFilter filter = TextureFilter::Nearest;
 		ShadowFilter shadowFilter = ShadowFilter::Hard;
 		uint32_t shadowSize = 0;
+		AlphaMode alphaMode = AlphaMode::Auto;
+		float alphaCutoff = 0.5f;
 		HdrSettings hdr;
 		std::string environmentPath;
 		float environmentRotation = 0.0f, environmentStrength = 1.0f;
@@ -124,6 +130,8 @@ int main(int argc, char* argv[])
 					environmentRotation = number(key, value);
 				else environmentStrength = number(key, value, 0.0f, 1024.0f);
 			}
+			else if (key == "--alpha") alphaMode = choice(alphaModes, value);
+			else if (key == "--alpha-cutoff") alphaCutoff = number(key, value, 0.0f, 1.0f);
 			else if (key == "--shadow-size") shadowSize = parseShadowSize(value);
 			else if (key == "--shadow-filter") shadowFilter = choice(shadowFilters, value);
 			else if (key == "--normals") normal = choice(normals, value);
@@ -203,6 +211,7 @@ int main(int argc, char* argv[])
 		renderer.SetScanline(scanline);
 		renderer.SetMsaa(msaa);
 		renderer.SetHdr(hdr);
+		renderer.SetAlpha(alphaMode, alphaCutoff);
 		renderer.SetNormalSource(normal);
 		renderer.SetTextureFilter(filter);
 		renderer.SetShadowSize(shadowSize);
