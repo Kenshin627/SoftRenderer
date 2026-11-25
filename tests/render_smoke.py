@@ -234,9 +234,9 @@ class RenderTests(unittest.TestCase):
             rows.extend(["v " + " ".join(map(str, world)), f"vt {u} {1-v}"])
         (self.folder / "plane.obj").write_text("\n".join(rows + ["f 1/1 2/2 3/3"]))
 
-    def sample_filter(self, name, raster="bbox"):
+    def sample_filter(self, name, raster="bbox", *options):
         return self.frame("--model", "plane.obj", "--mode", "albedo", "--filter", name,
-                          "--raster", raster, cwd=self.folder)
+                          "--raster", raster, *options, cwd=self.folder)
 
     def test_bilinear_centers_and_repeat_seams(self):
         image = Image.new("RGB", (2, 2))
@@ -284,6 +284,71 @@ class RenderTests(unittest.TestCase):
             frame = self.sample_filter(mode)
             self.assertAlmostEqual(frame.getpixel((80, 63))[0], expected, delta=1.1)
             self.assertEqual(frame.tobytes(), self.sample_filter(mode, "scanline").tobytes())
+
+    def test_anisotropy_limits_and_rotated_footprints(self):
+        texture = Image.new("L", (64, 32))
+        texture.putdata([255 if y == 16 else 0 for y in range(32) for x in range(64)])
+        texture.save(self.folder / "plane_diffuse.tga")
+        # Rotate the same 8x1 texel footprint in screen space. At 45 degrees
+        # neither screen derivative is parallel to the long axis.
+        for angle in (0, math.pi/4, math.pi/2):
+            c, s = math.cos(angle), math.sin(angle)
+            self.filter_triangle(lambda x, y, q: (
+                .5 + .8*8*(c*x+s*y)/(64*q), 16.5/32 + .8*(-s*x+c*y)/(32*q)))
+            for limit, expected in ((2, 40), (4, 96), (8, 255)):
+                frame = self.sample_filter("trilinear", "bbox", "--anisotropy", str(limit))
+                self.assertAlmostEqual(frame.getpixel((80, 63))[0], expected, delta=2, msg=(angle, limit))
+            self.assertEqual(frame.tobytes(),
+                             self.sample_filter("trilinear", "scanline", "--anisotropy", "8").tobytes())
+        ordinary = self.sample_filter("trilinear")
+        self.assertEqual(ordinary.tobytes(), self.sample_filter("trilinear", "bbox", "--anisotropy", "1").tobytes())
+
+    def test_anisotropy_preserves_four_texel_stripes_at_grazing_angles(self):
+        texture = Image.new("L", (64, 64))
+        texture.putdata([255 if (y // 4) % 2 else 0 for y in range(64) for x in range(64)])
+        texture.save(self.folder / "plane_diffuse.tga")
+        for row, expected in ((33, 0), (37, 255)):
+            self.filter_triangle(lambda x, y, q: (.5 + .8*8*x/(64*q), (row+.5)/64 + .8*y/(64*q)))
+            ordinary = self.sample_filter("trilinear")
+            eight = self.sample_filter("trilinear", "bbox", "--anisotropy", "8")
+            self.assertAlmostEqual(ordinary.getpixel((80, 63))[0], 128, delta=1)
+            self.assertEqual(eight.getpixel((80, 63))[0], expected)
+
+    def test_anisotropy_follows_a_diagonal_in_texture_space(self):
+        texture = Image.new("L", (64, 64))
+        texture.putdata([255 if (y-x) % 16 < 8 else 0 for y in range(64) for x in range(64)])
+        texture.save(self.folder / "plane_diffuse.tga")
+        for offset, expected in ((3.5, 255), (11.5, 0)):
+            self.filter_triangle(lambda x, y, q: (
+                .5 + .8*(16*x-y)/(math.sqrt(2)*64*q),
+                .5 + offset/64 + .8*(16*x+y)/(math.sqrt(2)*64*q)))
+            aa = self.sample_filter("trilinear", "bbox", "--anisotropy", "8")
+            self.assertAlmostEqual(aa.getpixel((80, 63))[0], expected, delta=6)
+            self.assertAlmostEqual(self.sample_filter("trilinear").getpixel((80, 63))[0], 128, delta=2)
+
+    def test_anisotropic_taps_wrap_and_filter_opacity_as_data(self):
+        # Eight centers straddle the repeat seam. Six land on white texels.
+        texture = Image.new("RGBA", (64, 1))
+        texture.putdata([(255, 255, 255, 255) if x >= 61 or 2 <= x <= 4 else (0, 0, 0, 0)
+                         for x in range(64)])
+        texture.save(self.folder / "plane_diffuse.tga")
+        for tile in (-1, 0, 1):
+            self.filter_triangle(lambda x, y, q: (tile + 1/64 + .8*8*x/(64*q), .5))
+            self.material("plane", "map_d plane_diffuse.tga", "alpha_mode mask")
+            args = ("--model", "plane.obj", "--mode", "albedo", "--filter", "trilinear", "--anisotropy", "8")
+            opaque = self.frame(*args, "--alpha", "opaque", cwd=self.folder)
+            hdr = self.frame(*args, "--hdr", "--alpha-cutoff", ".73", cwd=self.folder)
+            hole = self.frame(*args, "--alpha-cutoff", ".77", cwd=self.folder)
+            self.assertAlmostEqual(opaque.getpixel((80, 63))[0], 191, delta=1)
+            self.assertAlmostEqual(hdr.getpixel((80, 63))[0], display_byte(.75), delta=1)
+            self.assertEqual(hole.getpixel((80, 63)), (209, 195, 177))
+
+    def test_anisotropy_rejects_invalid_cli_options(self):
+        for mode, level in (("trilinear", "0"), ("trilinear", "3"), ("trilinear", "16"),
+                            ("trilinear", "4x"), ("bilinear", "4"), ("nearest", "2"), ("mipmap", "8")):
+            result = subprocess.run([str(EXE), "--filter", mode, "--anisotropy", level, "--output",
+                                     str(self.folder / "bad.tga")], cwd=PROJECT, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, (mode, level))
 
     def test_hdr_recovers_emission_above_display_white(self):
         self.screen_mesh("lamp", [(40, 30), (120, 30), (80, 100)], [(1, 2, 3)], (0, 0, 0))

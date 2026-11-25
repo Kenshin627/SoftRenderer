@@ -19,8 +19,8 @@ AlphaMode Material::Mode(AlphaMode overrideMode) const
 	return overrideMode;
 }
 
-float Material::SampleOpacity(const glm::vec2& uv, TextureFilter filter, const glm::vec2& dx, const glm::vec2& dy) const
+float Material::SampleOpacity(const glm::vec2& uv, TextureFilter filter, const glm::vec2& dx, const glm::vec2& dy, int maxAnisotropy) const
 {
 	if (!opacityMap) return opacity;
-	return opacity * Texture::OpacityChannel(opacityMap->SampleRgba(uv, filter, dx, dy), opacityChannel);
+	return opacity * Texture::OpacityChannel(opacityMap->SampleRgba(uv, filter, dx, dy, false, maxAnisotropy), opacityChannel);
 }

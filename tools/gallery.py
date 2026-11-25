@@ -85,6 +85,16 @@ def alpha_comparison(directory):
            "--filter", "bilinear", "--msaa", "4")
 
 
+def anisotropy_comparison(directory):
+    names = []
+    for limit in (1, 4, 8):
+        name = f"checker-aniso-{limit}"
+        render(directory, name, None, "albedo", "--model", "resource/models/filtering/checker.obj",
+               "--filter", "trilinear", "--anisotropy", str(limit))
+        names.append(name)
+    detail_grid("checker-aniso-detail", [names], (1310, 316, 1470, 396), gap=6, scale=4)
+
+
 def main():
     GALLERY.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -103,6 +113,7 @@ def main():
         hdr_comparison(directory)
         environment_comparison(directory)
         alpha_comparison(directory)
+        anisotropy_comparison(directory)
         for filtering in ("bilinear", "mipmap", "trilinear"):
             render(directory, "albedo-" + filtering, "diablo", "albedo", "--filter", filtering)
         render(directory, "bands", "diablo", "toon", "--post", "none")

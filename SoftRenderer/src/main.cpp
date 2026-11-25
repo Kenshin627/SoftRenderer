@@ -19,6 +19,7 @@ const std::map<std::string, TextureFilter> filters = {
 	{"nearest", TextureFilter::Nearest}, {"bilinear", TextureFilter::Bilinear},
 	{"mipmap", TextureFilter::Mipmap}, {"trilinear", TextureFilter::Trilinear}
 };
+const std::map<std::string, int> anisotropyLevels = {{"1", 1}, {"2", 2}, {"4", 4}, {"8", 8}};
 const std::map<std::string, AlphaMode> alphaModes = {
 	{"auto", AlphaMode::Auto}, {"opaque", AlphaMode::Opaque}, {"mask", AlphaMode::Mask}, {"blend", AlphaMode::Blend}
 };
@@ -67,6 +68,7 @@ void usage()
 	std::cout << "SoftRenderer [--scene diablo|head|helmet | --model file.obj ...] [--size WIDTHxHEIGHT] [--output frame.tga]\n"
 		"  --mode albedo|emission|lit|wire|barycentric|flat|gouraud|smooth|phong|blinn|normal|shadow|toon|depth|pbr\n"
 		"  --filter nearest|bilinear|mipmap|trilinear   (default: nearest)\n"
+		"  --anisotropy 1|2|4|8   (trilinear, default: 1)\n"
 		"  --normals auto|vertex|object|tangent   --raster bbox|scanline   --msaa 1|4 (default: 1)\n"
 		"  --hdr   --exposure EV (-16..16)   --emission-strength N (0..1024)   --bloom N (0..16)\n"
 		"    HDR controls enable linear rendering. Defaults: EV 0, emission 1, bloom 0.\n"
@@ -87,6 +89,7 @@ int main(int argc, char* argv[])
 		std::vector<std::string> models;
 		ShaderType mode = deActive, post = deActive;
 		TextureFilter filter = TextureFilter::Nearest;
+		int maxAnisotropy = 1;
 		ShadowFilter shadowFilter = ShadowFilter::Hard;
 		uint32_t shadowSize = 0;
 		AlphaMode alphaMode = AlphaMode::Auto;
@@ -111,6 +114,7 @@ int main(int argc, char* argv[])
 			else if (key == "--mode") mode = choice(modes, value);
 			else if (key == "--post") { post = choice(effects, value); explicitPost = true; }
 			else if (key == "--filter") filter = choice(filters, value);
+			else if (key == "--anisotropy") maxAnisotropy = choice(anisotropyLevels, value);
 			else if (key == "--exposure" || key == "--emission-strength" || key == "--bloom")
 			{
 				hdr.enabled = true;
@@ -157,6 +161,8 @@ int main(int argc, char* argv[])
 			}
 			else throw std::runtime_error("unknown option: " + key);
 		}
+		if (maxAnisotropy > 1 && filter != TextureFilter::Trilinear)
+			throw std::runtime_error("--anisotropy above 1 requires --filter trilinear");
 		if (mode == deActive) mode = environmentPath.empty() ? Toon : PBR;
 		if (environmentControl && environmentPath.empty()) throw std::runtime_error("environment controls require --env");
 		if (!environmentPath.empty() && mode != PBR) throw std::runtime_error("--env requires --mode pbr");
@@ -213,7 +219,7 @@ int main(int argc, char* argv[])
 		renderer.SetHdr(hdr);
 		renderer.SetAlpha(alphaMode, alphaCutoff);
 		renderer.SetNormalSource(normal);
-		renderer.SetTextureFilter(filter);
+		renderer.SetTextureFilter(filter, maxAnisotropy);
 		renderer.SetShadowSize(shadowSize);
 		renderer.SetShadowFilter(shadowFilter);
 		renderer.Draw();

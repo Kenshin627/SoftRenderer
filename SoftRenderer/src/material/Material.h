@@ -8,7 +8,7 @@ public:
 	Material() = default;
 	void ConfigureOpacity(float dissolve, const std::shared_ptr<Texture>& map, char channel, AlphaMode mode);
 	AlphaMode Mode(AlphaMode overrideMode) const;
-	float SampleOpacity(const glm::vec2& uv, TextureFilter filter, const glm::vec2& dx, const glm::vec2& dy) const;
+	float SampleOpacity(const glm::vec2& uv, TextureFilter filter, const glm::vec2& dx, const glm::vec2& dy, int maxAnisotropy = 1) const;
 
 	std::shared_ptr<Texture> ao;
 	std::shared_ptr<Texture> diffuse;

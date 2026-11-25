@@ -60,7 +60,7 @@ public:
 	static constexpr uint32_t MaxShadowSize = 8192;
 	void SetShadowSize(uint32_t side); // 0 follows the camera viewport
 	void SetShadowFilter(ShadowFilter value) { shadowFilter = value; }
-	void SetTextureFilter(TextureFilter value);
+	void SetTextureFilter(TextureFilter value, int anisotropy = 1);
 	void SetAlpha(AlphaMode mode, float cutoff);
 	void SetNormalSource(NormalSource source) { normalSource = source; }
 	void SetHdr(const HdrSettings& settings) { hdr = settings; }
@@ -96,6 +96,7 @@ private:
 	const Material* activeMaterial = nullptr;
 	AlphaMode activeAlpha = AlphaMode::Opaque;
 	TextureFilter textureFilter = TextureFilter::Nearest;
+	int maxAnisotropy = 1;
 	NormalSource normalSource = NormalSource::Auto;
 	bool scanline = false;
 	bool msaa = false;

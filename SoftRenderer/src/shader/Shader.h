@@ -61,6 +61,7 @@ public:
 	glm::vec3 SampleEmission(const glm::vec2& uv) const;
 	glm::vec3 SurfaceNormal(const glm::vec2& uv);
 	TextureFilter textureFilter = TextureFilter::Nearest;
+	int maxAnisotropy = 1;
 	glm::vec2 uvDx{0.0f}, uvDy{0.0f};
 	NormalSource normalSource = NormalSource::Auto;
 	std::shared_ptr<Texture> objectNormalTexture;

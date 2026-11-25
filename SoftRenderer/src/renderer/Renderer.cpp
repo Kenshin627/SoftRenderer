@@ -137,6 +137,7 @@ void Renderer::DefaultPass()
 	activeShader = shaderLibs.at(surface);
 	activeShader->normalSource = normalSource;
 	activeShader->textureFilter = textureFilter;
+	activeShader->maxAnisotropy = maxAnisotropy;
 	activeShader->hdr = !defaultPassFrameBuffer->linearColor.empty();
 	activeShader->emissionStrength = activeShader->hdr ? hdr.emissionStrength : 1.0f;
 	activeShader->light = activeScene->GetLight();
@@ -259,9 +260,10 @@ void Renderer::SetAlpha(AlphaMode mode, float cutoff)
 	SetAoMode(aoMode);
 }
 
-void Renderer::SetTextureFilter(TextureFilter value)
+void Renderer::SetTextureFilter(TextureFilter value, int anisotropy)
 {
-	if (value == textureFilter) return;
+	if (value == textureFilter && anisotropy == maxAnisotropy) return;
+	maxAnisotropy = anisotropy;
 	textureFilter = value;
 	SetAoMode(aoMode);
 }
@@ -787,7 +789,7 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 					float reciprocalW = q.x + q.y + q.z;
 					glm::vec2 dx, dy;
 					glm::vec2 uv = sampleUv(sourceWeights * (q / reciprocalW), reciprocalW, dx, dy);
-					alpha[i] = activeMaterial->SampleOpacity(uv, textureFilter, dx, dy);
+					alpha[i] = activeMaterial->SampleOpacity(uv, textureFilter, dx, dy, maxAnisotropy);
 					if (activeAlpha == AlphaMode::Mask && alpha[i] < alphaCutoff) continue;
 					if (activeAlpha == AlphaMode::Blend && alpha[i] <= 0.0f) continue;
 				}
