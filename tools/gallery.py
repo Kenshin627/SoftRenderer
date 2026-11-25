@@ -14,7 +14,7 @@ GALLERY = ROOT / "docs/screenshots"
 def render(directory, name, scene, mode, *options):
     path = directory / (name + ".tga")
     subprocess.run(
-        [str(EXE), "--scene", scene, "--mode", mode, "--size", "720x520",
+        [str(EXE), "--scene", scene, "--mode", mode, "--size", "2160x1560",
          "--output", str(path), *options],
         cwd=PROJECT, check=True,
     )
