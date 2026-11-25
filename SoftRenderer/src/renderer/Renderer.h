@@ -57,6 +57,9 @@ public:
 	glm::vec3 BaryCentric(const glm::vec4* vertices, const glm::vec2& p);
 	void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	void SetAoMode(AoMode mode);
+	static constexpr uint32_t MaxShadowSize = 8192;
+	void SetShadowSize(uint32_t side); // 0 follows the camera viewport
+	void SetShadowFilter(ShadowFilter value) { shadowFilter = value; }
 	void SetTextureFilter(TextureFilter value) { textureFilter = value; }
 	void SetNormalSource(NormalSource source) { normalSource = source; }
 	void SetMsaa(bool enabled);
@@ -76,6 +79,8 @@ private:
 	std::shared_ptr<Shader> activeShader;
 	std::shared_ptr<Shader> postProcessShader;
 	Viewport viewport = Viewport();
+	uint32_t shadowSize = 0;
+	ShadowFilter shadowFilter = ShadowFilter::Hard;
 	Viewport shadowViewport = Viewport();
 	std::shared_ptr<FrameBuffer> defaultPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> shadowPassFrameBuffer;

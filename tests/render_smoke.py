@@ -249,6 +249,64 @@ class RenderTests(unittest.TestCase):
             self.assertAlmostEqual(frame.getpixel((80, 63))[0], expected, delta=1.1)
             self.assertEqual(frame.tobytes(), self.sample_filter(mode, "scanline").tobytes())
 
+    def test_shadow_filter_preserves_planes_and_filters_cast_edges(self):
+        # A gray receiver and a red square half a unit closer to the directional light.
+        # The receiver extends beyond the shadow frustum; its slope in light space is nonzero.
+        for name, lo, hi, z, color in (("receiver", -3, 3, 0, (200, 200, 200)),
+                                       ("caster", -.2, .6, .5, (150, 0, 0))):
+            rows = [f"v {x} {y} {z}" for x, y in ((lo, lo), (hi, lo), (hi, hi), (lo, hi))]
+            (self.folder / (name + ".obj")).write_text("\n".join(rows + ["f 1 2 3", "f 1 3 4"]))
+            Image.new("RGB", (1, 1), color).save(self.folder / (name + "_diffuse.tga"))
+            Image.new("L", (1, 1), 0).save(self.folder / (name + "_spec.tga"))
+        def render(mode, *options):
+            return self.frame("--mode", mode, "--model", "receiver.obj", *options,
+                              size="321x241", cwd=self.folder)
+        lit = render("lit")
+        for side in ("1", "31", "256"):
+            filtered = render("shadow", "--shadow-filter", "pcf", "--shadow-size", side)
+            self.assertEqual(lit.tobytes(), filtered.tobytes(), side)
+
+        def receiver_levels(side, filtering):
+            frame = render("shadow", "--model", "caster.obj", "--shadow-size", side,
+                           "--shadow-filter", filtering)
+            return {r: count for count, (r, g, b) in frame.getcolors(321 * 241) if r == g == b}
+        # Only direct diffuse light varies. Each blocked tap removes 1/9 of its shadowable part.
+        levels = {int(200 * (0.4 + (1 - 0.7 * blocked / 9) / math.sqrt(3))) for blocked in range(10)}
+        ends = {min(levels), max(levels)}
+        self.assertEqual(set(receiver_levels("256", "hard")), ends)
+        coarse = receiver_levels("64", "pcf")
+        fine = receiver_levels("256", "pcf")
+        self.assertTrue(ends <= coarse.keys() <= levels)
+        self.assertTrue(ends <= fine.keys() <= levels)
+        self.assertGreaterEqual(len(coarse), 8)
+        self.assertGreater(sum(n for v, n in coarse.items() if v not in ends),
+                           sum(n for v, n in fine.items() if v not in ends))
+
+    def test_shadow_map_size_and_defaults(self):
+        args = ("--mode", "shadow")
+        default = self.frame(*args, size="151x151")
+        for side in ("auto", "604"):
+            explicit = self.frame(*args, "--shadow-size", side, "--shadow-filter", "hard", size="151x151")
+            self.assertEqual(default.tobytes(), explicit.tobytes())
+        coarse = self.frame(*args, "--shadow-size", "63", size="151x151")
+        self.assertIsNotNone(ImageChops.difference(default, coarse).getbbox())
+        for key, value in (("--shadow-size", "0"), ("--shadow-size", "8193"), ("--shadow-size", "32x32"),
+                           ("--shadow-size", "-1"), ("--shadow-filter", "linear")):
+            result = subprocess.run([str(EXE), key, value, "--output", str(self.folder / "bad.tga")],
+                                    cwd=PROJECT, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, (key, value))
+
+    def test_pcf_and_camera_msaa_share_the_same_ao_map_as_hard_shadows(self):
+        visibility = self.folder / "ao.tga"
+        args = ("--mode", "shadow", "--msaa", "4", "--ao", "ssao", "--ao-map", str(visibility))
+        hard = self.frame(*args, "--shadow-size", "512")
+        with Image.open(visibility) as image:
+            ao = image.tobytes()
+        pcf = self.frame(*args, "--shadow-size", "127", "--shadow-filter", "pcf")
+        with Image.open(visibility) as image:
+            self.assertEqual(ao, image.tobytes())
+        self.assertIsNotNone(ImageChops.difference(hard, pcf).getbbox())
+
     def test_occlusion_on_first_frame(self):
         lit = self.frame("--mode", "lit")
         shadow = self.frame("--mode", "shadow")
