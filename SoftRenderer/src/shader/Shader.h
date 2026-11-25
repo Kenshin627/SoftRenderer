@@ -54,6 +54,10 @@ public:
 	virtual void SetSampler(uint32_t slot, const std::shared_ptr<Texture>& texture);
 	virtual glm::vec3 Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>& texture);
 public:
+	bool hdr = false;
+	float emissionStrength = 1.0f;
+	glm::vec3 SampleColor(const glm::vec2& uv, const std::shared_ptr<Texture>& texture) const;
+	glm::vec3 SampleEmission(const glm::vec2& uv) const;
 	glm::vec3 SurfaceNormal(const glm::vec2& uv);
 	TextureFilter textureFilter = TextureFilter::Nearest;
 	glm::vec2 uvDx{0.0f}, uvDy{0.0f};

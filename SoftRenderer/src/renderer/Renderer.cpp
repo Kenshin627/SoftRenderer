@@ -138,6 +138,8 @@ void Renderer::DefaultPass()
 	activeShader = shaderLibs.at(surface);
 	activeShader->normalSource = normalSource;
 	activeShader->textureFilter = textureFilter;
+	activeShader->hdr = !defaultPassFrameBuffer->linearColor.empty();
+	activeShader->emissionStrength = activeShader->hdr ? hdr.emissionStrength : 1.0f;
 	const bool needsGradients = textureFilter == TextureFilter::Mipmap || textureFilter == TextureFilter::Trilinear;
 	activeShader->light = activeScene->GetLight();
 	activeShader->pointLights = activeScene->GetPointLights();
@@ -266,7 +268,12 @@ bool Renderer::SaveAo(const char* path) const
 void Renderer::Draw()
 {
 	if (!activeScene) return;
-	defaultPassFrameBuffer->samples.resize(msaa && surface != ShaderType::Lines ? size_t(viewport.width) * viewport.height : 0);
+	const size_t pixels = size_t(viewport.width) * viewport.height;
+	const bool multi = msaa && surface != ShaderType::Lines;
+	const bool useHdr = hdr.enabled && surface != ShaderType::Lines && surface != ShaderType::DepthMap
+		&& surface != ShaderType::NormalMap && surface != ShaderType::BarycentricColor;
+	defaultPassFrameBuffer->samples.resize(multi ? pixels : 0);
+	defaultPassFrameBuffer->linearColor.resize(useHdr ? pixels * (multi ? 4 : 1) : 0);
 	Clear();
 	if (surface == ShaderType::Lines)
 	{
@@ -285,7 +292,8 @@ void Renderer::Draw()
 			DefaultPass();
 		}
 	}
-	defaultPassFrameBuffer->FinishColor(surface == ShaderType::DepthMap);
+	if (useHdr) defaultPassFrameBuffer->FinishHdr(hdr);
+	else defaultPassFrameBuffer->FinishColor(surface == ShaderType::DepthMap);
 	defaultPassFrameBuffer->colorAttachment.flip_vertically();
 	if (postProcessShader) PostProcess();
 }
@@ -734,13 +742,7 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 			activeShader->aoFactor = aoBuffer.empty() ? 1.0f : aoBuffer[index];
 			glm::vec4 fragment;
 			if (activeShader->Fragment(fragment)) continue;
-			TGAColor color(uint8_t(fragment.r * 255), uint8_t(fragment.g * 255), uint8_t(fragment.b * 255), 255);
-			if (multi)
-			{
-				for (int i = 0; i < sampleCount; ++i)
-					if (visibleMask & (1 << i)) (*quad)[i] = {depths[i], color.r, color.g, color.b};
-			}
-			else currentBuffer->colorAttachment.set(x, y, color);
+			currentBuffer->WriteFragment(x, y, index, visibleMask, depths, glm::vec3(fragment));
 
 			if (closest < currentBuffer->zBuffer[index])
 			{

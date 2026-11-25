@@ -22,9 +22,9 @@ def render(directory, name, scene, mode, *options):
         frame.save(GALLERY / (name + ".png"))
 
 
-def detail_grid(name, rows, box, gap=0):
+def detail_grid(name, rows, box, gap=0, scale=6):
     # Enlarge exactly the same source pixels in every panel.
-    width, height = (box[2] - box[0]) * 6, (box[3] - box[1]) * 6
+    width, height = (box[2] - box[0]) * scale, (box[3] - box[1]) * scale
     cols = len(rows[0])
     comparison = Image.new("RGB", (cols * width + (cols - 1) * gap,
                                    len(rows) * height + (len(rows) - 1) * gap), (48, 48, 48))
@@ -50,6 +50,18 @@ def shadow_comparison(directory):
     detail_grid("shadow-contact-detail", contact, (864, 1064, 960, 1128), gap=6)
 
 
+def hdr_comparison(directory):
+    options = ("--hdr", "--shadow-size", "2048", "--shadow-filter", "pcf")
+    for name, strength, ev, bloom in (("hdr-emission-1", 1, 0, 0), ("hdr-emission-8", 8, 0, 0),
+                                      ("hdr-emission-64", 64, 0, 0), ("hdr-bloom", 64, 0, 1),
+                                      ("hdr-exposure-minus2", 64, -2, 0)):
+        render(directory, name, "diablo", "shadow", *options, "--emission-strength", str(strength),
+               "--exposure", str(ev), "--bloom", str(bloom))
+    render(directory, "helmet-hdr", "helmet", "pbr", "--hdr")
+    sequence = [("hdr-emission-1", "hdr-emission-8", "hdr-emission-64", "hdr-bloom")]
+    detail_grid("hdr-bloom-detail", sequence, (978, 285, 1166, 473), gap=6, scale=2)
+
+
 def main():
     GALLERY.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -65,6 +77,7 @@ def main():
         for mode in ("albedo", "emission", "lit", "shadow", "depth", "toon"):
             render(directory, mode, "diablo", mode)
         shadow_comparison(directory)
+        hdr_comparison(directory)
         for filtering in ("bilinear", "mipmap", "trilinear"):
             render(directory, "albedo-" + filtering, "diablo", "albedo", "--filter", filtering)
         render(directory, "bands", "diablo", "toon", "--post", "none")

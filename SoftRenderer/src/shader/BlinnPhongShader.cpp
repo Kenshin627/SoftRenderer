@@ -19,7 +19,7 @@ bool BlinnPhongShader::Fragment(glm::vec4& gl_FragColor)
 	glm::vec3 lightColor = light->Color();
 	
 	//diffuse
-	glm::vec3 diffuseColor = Sampler2D(uv, diffuseTexture); //[0-1]
+	glm::vec3 diffuseColor = SampleColor(uv, diffuseTexture); //[0-1]
 	float diffuse = glm::max(0.0f, glm::dot(lightDir, normal));
 	diffuseColor = diffuse * diffuseColor;
 
@@ -43,9 +43,7 @@ bool BlinnPhongShader::Fragment(glm::vec4& gl_FragColor)
 	glm::vec3 ambientColor = glm::vec3(0.08f);
 
 	glm::vec3 color = (diffuseColor + specularColor + ambientColor) * lightColor;
-	color.r = glm::min(1.0f, color.r);
-	color.g = glm::min(1.0f, color.g);
-	color.b = glm::min(1.0f, color.b);
+	if (hdr) color += SampleEmission(uv);
 	gl_FragColor = { color, 1.0f };
 	return false;
 }
