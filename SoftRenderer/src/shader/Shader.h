@@ -36,6 +36,8 @@ enum ShaderType
 	Lit
 };
 
+enum class ShadowFilter { Hard, PCF };
+
 enum class NormalSource { Auto, Vertex, Object, Tangent };
 
 enum class ShaderStageType
@@ -82,7 +84,8 @@ public:
 	//shadowMap
 	std::shared_ptr<FrameBuffer> shadowBuffer;
 	glm::mat4 viewport;
-	glm::mat4 shadowViewport; //viewport matching the (higher-res) shadow buffer
+	glm::mat4 worldToShadow{1.0f};
+	ShadowFilter shadowFilter = ShadowFilter::Hard;
 
 	//ambient occlusion: per-pixel multiplier filled by the renderer (1 = no occlusion)
 	float aoFactor = 1.0f;

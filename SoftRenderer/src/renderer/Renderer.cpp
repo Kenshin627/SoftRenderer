@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include <stdexcept>
 #include "Triangle.h"
 #include <algorithm>
 #include <array>
@@ -78,9 +79,6 @@ void Renderer::EndScene()
 void Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
 	viewport.Set(x, y, width, height);
-	//the shadow map runs at higher resolution than the camera framebuffer
-	//(tutorial reference: 8000x8000 shadow buffer for an 800x800 output)
-	shadowViewport.Set(0, 0, width * 4, height * 4);
 	defaultPassFrameBuffer = std::make_unique<FrameBuffer>(width, height);
 	defaultPassFrameBuffer->clearColor = { 209, 195, 177, 255 }; // light backdrop like the tutorial renders
 	shadowPassFrameBuffer.reset();
@@ -88,11 +86,21 @@ void Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t heig
 	postProcessBuffer = std::make_shared < FrameBuffer>(width, height);
 }
 
+void Renderer::SetShadowSize(uint32_t side)
+{
+	if (side > MaxShadowSize) throw std::invalid_argument("shadow map side exceeds 8192");
+	shadowSize = side;
+}
+
 void Renderer::ShadowPass()
 {
-	if (!shadowPassFrameBuffer)
-		shadowPassFrameBuffer = std::make_shared<FrameBuffer>(shadowViewport.width, shadowViewport.height, true);
-	shadowPassFrameBuffer->Reset();
+	uint32_t width = shadowSize ? shadowSize : viewport.width * 4;
+	uint32_t height = shadowSize ? shadowSize : viewport.height * 4;
+	shadowViewport.Set(0, 0, width, height);
+	if (!shadowPassFrameBuffer || shadowPassFrameBuffer->width != width || shadowPassFrameBuffer->height != height)
+		shadowPassFrameBuffer = std::make_shared<FrameBuffer>(width, height, true);
+	else
+		shadowPassFrameBuffer->Reset();
 	RenderSceneDepth(activeScene->GetLight()->GetLightSpace().ViewProjection(), shadowPassFrameBuffer);
 }
 
@@ -139,7 +147,11 @@ void Renderer::DefaultPass()
 	activeShader->camPos = activeScene->GetCamera()->Position();
 	activeShader->shadowBuffer = surface == ShaderType::BlinnPhongWithShadow ? shadowPassFrameBuffer : nullptr;
 	activeShader->viewport = viewport.transform;
-	activeShader->shadowViewport = shadowViewport.transform;
+	if (activeShader->shadowBuffer)
+	{
+		activeShader->worldToShadow = shadowViewport.transform * activeShader->light->GetLightSpace().ViewProjection();
+		activeShader->shadowFilter = shadowFilter;
+	}
 	glm::vec4 clipCoords[3];
 	glm::vec3 localPosition[3];
 	glm::vec2 uvs[3];
@@ -630,8 +642,7 @@ void ScanlineSpan(const glm::vec4* v, float bottom, float top, int& left, int& r
 
 void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& currentBuffer, const glm::vec2* uvs)
 {
-	//the viewport transform is derived from the target buffer, since the shadow buffer
-	//runs at a higher resolution than the camera framebuffer
+	// Each pass uses the dimensions of its own render target.
 	Viewport bufferViewport;
 	bufferViewport.Set(0, 0, currentBuffer->width, currentBuffer->height);
 	glm::vec4 beforeClippedCoords[3] = { bufferViewport.transform * vertices[0], bufferViewport.transform * vertices[1], bufferViewport.transform * vertices[2] };

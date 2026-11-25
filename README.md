@@ -1,6 +1,6 @@
 # SoftRenderer
 
-用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 26 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附一张轮廓局部放大对照图。点击任意图片可查看完整尺寸的 PNG。
+用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 30 张完整截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染，另附三张局部放大图，分别对比模型轮廓、投影边缘和脚掌接地处。点击任意图片可查看完整尺寸的 PNG。
 
 **人头像 · Phong 与物体空间法线**
 
@@ -47,7 +47,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 | 光照 | Flat 使用面法线，Gouraud 插值顶点光照，逐像素着色使用插值法线。Phong 用反射向量计算高光，Blinn–Phong 使用半程向量。 | `flat`、`gouraud`、`smooth`、`phong`、`blinn` |
 | 材质与法线 | 支持漫反射、高光、自发光，以及物体空间和切线空间法线贴图。可单独查看底色、发光区域或参与光照的世界空间法线。 | `--mode albedo`、`--mode emission`、`--mode normal --normals object` |
 | 纹理过滤 | 支持最近邻、双线性、单层 mipmap 与三线性。根据每个片元的屏幕空间 UV 梯度和当前贴图尺寸选择层级。 | `--filter nearest`、`bilinear`、`mipmap`、`trilinear` |
-| 阴影与环境遮蔽 | 方向光阴影由光源视角的深度图生成。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
+| 阴影与环境遮蔽 | 方向光使用独立分辨率的深度图，支持单点深度比较和 3×3 PCF。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
 | 卡通与描边 | 三档光照生成色带，Sobel 算子从深度变化中提取轮廓。可以使用同一机位单独比较描边效果。 | `--mode toon --post none` 对比 `--mode toon` |
 
 ### 光栅化与深度
@@ -128,7 +128,56 @@ Flat 每个三角形共用一个面法线，鼻梁和下颌的分面尤其明显
 
 [![相同光照和材质下未开启阴影的场景](docs/screenshots/lit.png)](docs/screenshots/lit.png?raw=true)
 
-将页首的 Diablo 投影阴影图与上方关闭阴影的合成图对照，可以观察角色在脚下和身后留下的投影。`shadow` 和 `lit` 使用同一套材质与光照参数。AO 调制环境光，自发光独立叠加。下面两组大图依次展示 SSAO 和多方向 AO 的合成结果与可见度，白色表示开放、暗部表示遮蔽。
+将页首的 Diablo 投影阴影图与上方关闭阴影的合成图对照，可以观察角色在脚下和身后留下的投影。`shadow` 和 `lit` 使用同一套材质与光照参数。AO 调制环境光，自发光独立叠加。
+
+### 方向光阴影过滤
+
+下图截取 Diablo 爪部落在棋盘地面上的投影。**左列是硬阴影，右列是 3×3 PCF。上排使用 2048² 阴影图，下排使用 4096² 阴影图。** 四块均取自 2160 × 1560 全图的同一处 96 × 64 像素，以最近邻放大 6 倍。沿爪尖观察，PCF 让明暗之间出现过渡。阴影图边长加倍后，同一个 3×3 采样窗口覆盖的地面范围减半，细小爪尖的投影更清晰。
+
+[![爪部投影局部对比，左硬阴影右 PCF，上排 2048 下排 4096](docs/screenshots/shadow-filter-detail.png)](docs/screenshots/shadow-filter-detail.png?raw=true)
+
+**脚掌接地处。** 从左到右依次为默认硬阴影、2048² PCF 和 4096² PCF。角色最低顶点与地面均在 `y = −1`。下图从原图左上角坐标 (864, 1064) 截取 96 × 64 像素，包含该顶点。将模型三角形沿光线方向投到地面，理论投影覆盖了窗口内 751 个可见地面像素。将其中与关闭阴影时颜色完全相同的像素计为完全漏光，三种设置分别有 **6、0、2 个**这样的像素。2048² 的过渡也更宽，可以沿爪尖左侧观察。
+
+[![脚掌最低点附近的地面投影，默认硬阴影、2048 PCF、4096 PCF](docs/screenshots/shadow-contact-detail.png)](docs/screenshots/shadow-contact-detail.png?raw=true)
+
+`--shadow-size N` 创建边长为 `N` 的正方形阴影图，支持 1 到 8192 的整数。默认 `auto` 将输出宽、高分别乘以四。`--shadow-filter hard` 是默认模式，每个片元比较一次深度。`pcf` 在相邻的九个纹素中心分别比较深度，再根据被遮挡的比例调整漫反射和高光。接收面的三角形提供深度斜率，以便在斜面上对准各采样位置。图边缘的采样限制在最外层纹素，光源视锥外按受光处理。
+
+```powershell
+& $exe --scene diablo --mode shadow --size 2160x1560 --shadow-size 2048 --shadow-filter pcf --output shadow-pcf.tga
+```
+
+**阴影图内存与单次出图耗时。** 在 Ryzen 7 9700X 上使用 Windows Release x64 渲染同一 Diablo 场景，输出 2160 × 1560，关闭 AO，使用单采样。每组先预热一次，随后轮换配置各运行五次，表中取中位数。耗时包含进程启动、模型加载、两遍渲染和 TGA 写盘。内存一栏只计算方向光深度图，每个纹素占 4 字节。
+
+| 阴影图 | 深度图内存 | 硬阴影 | 3×3 PCF |
+| --- | ---: | ---: | ---: |
+| 2048 × 2048 | 16 MiB | 338 ms | 369 ms |
+| 4096 × 4096 | 64 MiB | 460 ms | 476 ms |
+| 8640 × 6240（`auto`） | 205.7 MiB | 764 ms | 803 ms |
+
+**2048² · 硬阴影**
+
+[![2048 平方阴影图的单点深度比较全图](docs/screenshots/shadow-2048-hard.png)](docs/screenshots/shadow-2048-hard.png?raw=true)
+
+**2048² · 3×3 PCF**
+
+[![2048 平方阴影图的 PCF 全图](docs/screenshots/shadow-2048-pcf.png)](docs/screenshots/shadow-2048-pcf.png?raw=true)
+
+<details>
+<summary>展开 4096² 阴影图的两张完整渲染</summary>
+
+**4096² · 硬阴影**
+
+[![4096 平方阴影图的单点深度比较全图](docs/screenshots/shadow-4096-hard.png)](docs/screenshots/shadow-4096-hard.png?raw=true)
+
+**4096² · 3×3 PCF**
+
+[![4096 平方阴影图的 PCF 全图](docs/screenshots/shadow-4096-pcf.png)](docs/screenshots/shadow-4096-pcf.png?raw=true)
+
+</details>
+
+### 环境遮蔽
+
+下面两组大图依次展示 SSAO 和多方向 AO 的合成结果与可见度，白色表示开放、暗部表示遮蔽。
 
 **SSAO · 每像素 128 个半球样本 · 最终帧**
 
@@ -195,7 +244,7 @@ SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外�
 
 ## 复现截图与测试
 
-在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、首帧 AO 和卡通描边。
+在仓库根目录运行以下命令。画廊脚本调用同一个可执行文件导出 TGA，再用 Pillow 无损转为 PNG。回归测试覆盖 OBJ 遮挡顺序、近裁剪面、两种填充路径的像素一致性、共享边归属、子像素覆盖与逐样本深度、法线贴图坐标系、灰度纹理、自发光、阴影图尺寸、PCF 的遮挡比例与斜面深度比较、首帧 AO 和卡通描边。
 
 ```powershell
 python -m pip install Pillow

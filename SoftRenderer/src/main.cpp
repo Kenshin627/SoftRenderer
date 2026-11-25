@@ -17,6 +17,9 @@ const std::map<std::string, TextureFilter> filters = {
 	{"nearest", TextureFilter::Nearest}, {"bilinear", TextureFilter::Bilinear},
 	{"mipmap", TextureFilter::Mipmap}, {"trilinear", TextureFilter::Trilinear}
 };
+const std::map<std::string, ShadowFilter> shadowFilters = {
+	{"hard", ShadowFilter::Hard}, {"pcf", ShadowFilter::PCF}
+};
 const std::map<std::string, NormalSource> normals = {
 	{"auto", NormalSource::Auto}, {"vertex", NormalSource::Vertex}, {"object", NormalSource::Object}, {"tangent", NormalSource::Tangent}
 };
@@ -32,12 +35,23 @@ T choice(const std::map<std::string, T>& choices, const std::string& value)
 	return found->second;
 }
 
+uint32_t parseShadowSize(const std::string& value)
+{
+	if (value == "auto") return 0;
+	uint32_t side = 0;
+	std::istringstream input(value);
+	if (value.find_first_not_of("0123456789") != std::string::npos || !(input >> side) || side == 0 || side > Renderer::MaxShadowSize)
+		throw std::runtime_error("--shadow-size expects auto or a side length from 1 to 8192");
+	return side;
+}
+
 void usage()
 {
 	std::cout << "SoftRenderer [--scene diablo|head|helmet | --model file.obj ...] [--size WIDTHxHEIGHT] [--output frame.tga]\n"
 		"  --mode albedo|emission|lit|wire|barycentric|flat|gouraud|smooth|phong|blinn|normal|shadow|toon|depth|pbr\n"
 		"  --filter nearest|bilinear|mipmap|trilinear   (default: nearest)\n"
 		"  --normals auto|vertex|object|tangent   --raster bbox|scanline   --msaa 1|4 (default: 1)\n"
+		"  --shadow-size auto|N (1..8192)   --shadow-filter hard|pcf   (defaults: auto, hard)\n"
 		"  --ao off|ssao|brute (phong/shadow)     --ao-map visibility.tga\n"
 		"  --post none|outline|gray|rgb|mosaic   (toon defaults to outline)\n";
 }
@@ -51,6 +65,8 @@ int main(int argc, char* argv[])
 		std::vector<std::string> models;
 		ShaderType mode = Toon, post = deActive;
 		TextureFilter filter = TextureFilter::Nearest;
+		ShadowFilter shadowFilter = ShadowFilter::Hard;
+		uint32_t shadowSize = 0;
 		NormalSource normal = NormalSource::Auto;
 		auto ao = Renderer::AoMode::Off;
 		bool explicitPost = false, scanline = false, msaa = false;
@@ -66,6 +82,8 @@ int main(int argc, char* argv[])
 			else if (key == "--mode") mode = choice(modes, value);
 			else if (key == "--post") { post = choice(effects, value); explicitPost = true; }
 			else if (key == "--filter") filter = choice(filters, value);
+			else if (key == "--shadow-size") shadowSize = parseShadowSize(value);
+			else if (key == "--shadow-filter") shadowFilter = choice(shadowFilters, value);
 			else if (key == "--normals") normal = choice(normals, value);
 			else if (key == "--ao") ao = choice(occlusion, value);
 			else if (key == "--ao-map") aoOutput = value;
@@ -134,6 +152,8 @@ int main(int argc, char* argv[])
 		renderer.SetMsaa(msaa);
 		renderer.SetNormalSource(normal);
 		renderer.SetTextureFilter(filter);
+		renderer.SetShadowSize(shadowSize);
+		renderer.SetShadowFilter(shadowFilter);
 		renderer.Draw();
 		if (!aoOutput.empty() && !renderer.SaveAo(aoOutput.c_str())) return 1;
 		if (!output.empty()) return renderer.Image().write_tga_file(output.c_str()) ? 0 : 1;

@@ -22,15 +22,32 @@ def render(directory, name, scene, mode, *options):
         frame.save(GALLERY / (name + ".png"))
 
 
-def helmet_edge_comparison():
-    # Show the same 96x64 pixels of the helmet crown, without smoothing the enlargement.
-    box = (908, 64, 1004, 128)
-    comparison = Image.new("RGB", (96 * 6 * 2, 64 * 6))
-    for i, name in enumerate(("helmet", "helmet-msaa4")):
-        with Image.open(GALLERY / (name + ".png")) as frame:
-            crop = frame.crop(box).resize((96 * 6, 64 * 6), Image.Resampling.NEAREST)
-            comparison.paste(crop, (i * crop.width, 0))
-    comparison.save(GALLERY / "helmet-msaa-detail.png")
+def detail_grid(name, rows, box, gap=0):
+    # Enlarge exactly the same source pixels in every panel.
+    width, height = (box[2] - box[0]) * 6, (box[3] - box[1]) * 6
+    cols = len(rows[0])
+    comparison = Image.new("RGB", (cols * width + (cols - 1) * gap,
+                                   len(rows) * height + (len(rows) - 1) * gap), (48, 48, 48))
+    for y, row in enumerate(rows):
+        for x, source in enumerate(row):
+            with Image.open(GALLERY / (source + ".png")) as frame:
+                crop = frame.crop(box).resize((width, height), Image.Resampling.NEAREST)
+                comparison.paste(crop, (x * (width + gap), y * (height + gap)))
+    comparison.save(GALLERY / (name + ".png"))
+
+
+def shadow_comparison(directory):
+    rows = []
+    for side in ("2048", "4096"):
+        row = []
+        for filtering in ("hard", "pcf"):
+            name = f"shadow-{side}-{filtering}"
+            render(directory, name, "diablo", "shadow", "--shadow-size", side, "--shadow-filter", filtering)
+            row.append(name)
+        rows.append(row)
+    detail_grid("shadow-filter-detail", rows, (518, 941, 614, 1005), gap=6)
+    contact = [("shadow", "shadow-2048-pcf", "shadow-4096-pcf")]
+    detail_grid("shadow-contact-detail", contact, (864, 1064, 960, 1128), gap=6)
 
 
 def main():
@@ -44,9 +61,10 @@ def main():
         render(directory, "phong", "head", "phong", "--normals", "object")
         render(directory, "helmet", "helmet", "pbr")
         render(directory, "helmet-msaa4", "helmet", "pbr", "--msaa", "4")
-        helmet_edge_comparison()
+        detail_grid("helmet-msaa-detail", [("helmet", "helmet-msaa4")], (908, 64, 1004, 128))
         for mode in ("albedo", "emission", "lit", "shadow", "depth", "toon"):
             render(directory, mode, "diablo", mode)
+        shadow_comparison(directory)
         for filtering in ("bilinear", "mipmap", "trilinear"):
             render(directory, "albedo-" + filtering, "diablo", "albedo", "--filter", filtering)
         render(directory, "bands", "diablo", "toon", "--post", "none")
