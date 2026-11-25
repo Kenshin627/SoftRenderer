@@ -52,11 +52,12 @@ public:
 	void DefaultPass();
 	void PostProcess();
 	void Clear();
-	void Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer);
+	void Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>& currentBuffer, const glm::vec2* uvs = nullptr);
 	BoundingBox GetBoundingBox(const glm::vec4* vertices, uint32_t width, uint32_t height);
 	glm::vec3 BaryCentric(const glm::vec4* vertices, const glm::vec2& p);
 	void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	void SetAoMode(AoMode mode);
+	void SetTextureFilter(TextureFilter value) { textureFilter = value; }
 	void SetNormalSource(NormalSource source) { normalSource = source; }
 	void SetScanline(bool enabled) { scanline = enabled; }
 	const TGAImage& Image() const;
@@ -64,7 +65,7 @@ public:
 	bool SaveAo(const char* path) const;
 private:
 	void BresenhamLine(glm::ivec2 a, glm::ivec2 b);
-	void RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& target);
+	void RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& target, const glm::vec2* uvs);
 	void RenderSceneDepth(const glm::mat4& viewProjection, std::shared_ptr<FrameBuffer>& target);
 	void ComputeSsao();
 	void BlurAo();
@@ -79,6 +80,7 @@ private:
 	std::shared_ptr<FrameBuffer> shadowPassFrameBuffer;
 	std::shared_ptr<FrameBuffer> postProcessBuffer;
 	ShaderType surface = ShaderType::Toon;
+	TextureFilter textureFilter = TextureFilter::Nearest;
 	NormalSource normalSource = NormalSource::Auto;
 	bool scanline = false;
 	//ambient occlusion state (static scene: computed once, applied per pixel afterwards)

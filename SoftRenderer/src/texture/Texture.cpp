@@ -1,26 +1,112 @@
 #include "Texture.h"
+#include <stbimage/stb_image.h>
+#include <cmath>
+#include <memory>
 
 Texture::Texture(const char* path)
 {
-	//stbi_set_flip_vertically_on_load(true);
-	data = stbi_load(path, &width, &height, nullptr, STBI_rgb_alpha);
+	int width = 0, height = 0;
+	std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
+		stbi_load(path, &width, &height, nullptr, STBI_rgb_alpha), stbi_image_free);
+	if (!pixels) return;
+	base.width = width;
+	base.height = height;
+	base.rgba.assign(pixels.get(), pixels.get() + size_t(width) * height * 4);
 }
 
-Texture::~Texture()
+glm::vec4 Texture::Level::Texel(int x, int y) const
 {
-	stbi_image_free(data);
+	const auto* p = &rgba[4 * (size_t(y) * width + x)];
+	return {p[0], p[1], p[2], p[3]};
 }
 
- glm::vec4 Texture::Get(uint32_t x, uint32_t y) const 
+glm::vec4 Texture::Get(uint32_t x, uint32_t y) const
 {
-	if (data == nullptr)
+	if (base.rgba.empty()) return glm::vec4(0);
+	return base.Texel(x % base.width, y % base.height);
+}
+
+glm::vec4 Texture::Level::Bilinear(const glm::vec2& uv) const
+{
+	// Texel centers lie at (i + 0.5) / size. Wrap each tap across the tile seam.
+	const glm::vec2 pos = glm::fract(uv) * glm::vec2(width, height) - 0.5f;
+	const glm::ivec2 lo(glm::floor(pos));
+	const glm::vec2 f = glm::fract(pos);
+	const int x0 = (lo.x + width) % width, x1 = (lo.x + 1) % width;
+	const int y0 = (lo.y + height) % height, y1 = (lo.y + 1) % height;
+	return glm::mix(glm::mix(Texel(x0, y0), Texel(x1, y0), f.x),
+		glm::mix(Texel(x0, y1), Texel(x1, y1), f.x), f.y);
+}
+
+Texture::Level Texture::Level::Downsample() const
+{
+	Level dst;
+	dst.width = glm::max(1, width / 2);
+	dst.height = glm::max(1, height / 2);
+	dst.rgba.resize(size_t(dst.width) * dst.height * 4);
+	// Area weights include the last row/column even when a dimension is odd.
+	for (int y = 0; y < dst.height; ++y)
 	{
-		return glm::vec4(0.0f);
+		const double top = double(y) * height / dst.height;
+		const double bottom = double(y + 1) * height / dst.height;
+		for (int x = 0; x < dst.width; ++x)
+		{
+			const double left = double(x) * width / dst.width;
+			const double right = double(x + 1) * width / dst.width;
+			glm::dvec4 sum(0.0);
+			for (int sy = int(top); sy < bottom; ++sy)
+			{
+				const double wy = glm::min(bottom, double(sy + 1)) - glm::max(top, double(sy));
+				for (int sx = int(left); sx < right; ++sx)
+				{
+					const double wx = glm::min(right, double(sx + 1)) - glm::max(left, double(sx));
+					sum += glm::dvec4(Texel(sx, sy)) * (wx * wy);
+				}
+			}
+			const auto mean = sum / ((right - left) * (bottom - top));
+			for (int c = 0; c < 4; ++c)
+				dst.rgba[(size_t(y) * dst.width + x) * 4 + c] = uint8_t(std::lround(mean[c]));
+		}
 	}
-	const unsigned char* pixelOffset = data + (x % width + y % height * width) * 4; // wrap for tiled UVs
-	unsigned char r = pixelOffset[0];
-	unsigned char g = pixelOffset[1];
-	unsigned char b = pixelOffset[2];
-	unsigned char a = pixelOffset[3];
-	return { r, g, b, a };
+	return dst;
+}
+
+glm::vec3 Texture::Sample(const glm::vec2& uv, TextureFilter filter,
+	const glm::vec2& uvDx, const glm::vec2& uvDy) const
+{
+	if (base.rgba.empty()) return glm::vec3(0);
+	if (filter == TextureFilter::Nearest)
+	{
+		// Preserve the original nearest sampler's endpoint convention.
+		auto texel = [](float u, int size) {
+			float wrapped = u == 1.0f ? 1.0f : glm::fract(u);
+			return int(glm::min(wrapped * size, float(size - 1)));
+		};
+		return glm::vec3(base.Texel(texel(uv.x, base.width), texel(uv.y, base.height))) / 255.0f;
+	}
+	if (filter == TextureFilter::Bilinear) return glm::vec3(base.Bilinear(uv)) / 255.0f;
+
+	const glm::vec2 size(base.width, base.height);
+	const auto dx = uvDx * size, dy = uvDy * size;
+	const float footprint2 = glm::max(glm::dot(dx, dx), glm::dot(dy, dy));
+	if (footprint2 <= 1.0f) return glm::vec3(base.Bilinear(uv)) / 255.0f;
+	std::call_once(mipInit, [this] {
+		std::vector<Level> chain;
+		const Level* level = &base;
+		while (level->width > 1 || level->height > 1)
+		{
+			chain.push_back(level->Downsample());
+			level = &chain.back();
+		}
+		mips.swap(chain);
+	});
+	const float lod = glm::min(0.5f * std::log2(footprint2), float(mips.size()));
+	auto level = [&](int i) -> const Level& { return i == 0 ? base : mips[i - 1]; };
+	if (filter == TextureFilter::Mipmap)
+		return glm::vec3(level(int(std::round(lod))).Bilinear(uv)) / 255.0f;
+	const int lower = int(lod);
+	const auto a = level(lower).Bilinear(uv);
+	const float blend = lod - lower;
+	if (blend == 0.0f) return glm::vec3(a) / 255.0f;
+	return glm::vec3(glm::mix(a, level(lower + 1).Bilinear(uv), blend)) / 255.0f;
 }

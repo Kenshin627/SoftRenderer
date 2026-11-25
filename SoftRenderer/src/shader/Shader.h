@@ -53,6 +53,8 @@ public:
 	virtual glm::vec3 Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>& texture);
 public:
 	glm::vec3 SurfaceNormal(const glm::vec2& uv);
+	TextureFilter textureFilter = TextureFilter::Nearest;
+	glm::vec2 uvDx{0.0f}, uvDy{0.0f};
 	NormalSource normalSource = NormalSource::Auto;
 	std::shared_ptr<Texture> objectNormalTexture;
 	Triangle triangle;

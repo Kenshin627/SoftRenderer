@@ -1,6 +1,6 @@
 # SoftRenderer
 
-用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 22 张截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染。点击任意图片可查看完整尺寸的 PNG。
+用 C++ 在 CPU 上将 OBJ 三角网格渲染为图像。顶点变换、裁剪、覆盖测试、纹理采样、光照、阴影和后处理都在软件中执行。SDL2 显示最终帧，也可以直接导出 TGA。以下 25 张截图均由 Release x64 程序以 2160 × 1560 原生分辨率渲染。点击任意图片可查看完整尺寸的 PNG。
 
 **人头像 · Phong 与物体空间法线**
 
@@ -46,6 +46,7 @@ $exe = ".\bin\x64\Release\SoftRenderer.exe"
 | 相机与深度 | 三角形先经过齐次空间六平面裁剪，再进行透视除法。浮点 Z-buffer 决定表面可见性，深度预览将当前可见范围映射为灰度。 | `--mode depth` |
 | 光照 | Flat 使用面法线，Gouraud 插值顶点光照，逐像素着色使用插值法线。Phong 用反射向量计算高光，Blinn–Phong 使用半程向量。 | `flat`、`gouraud`、`smooth`、`phong`、`blinn` |
 | 材质与法线 | 支持漫反射、高光、自发光，以及物体空间和切线空间法线贴图。可单独查看底色、发光区域或参与光照的世界空间法线。 | `--mode albedo`、`--mode emission`、`--mode normal --normals object` |
+| 纹理过滤 | 支持最近邻、双线性、单层 mipmap 与三线性。根据每个片元的屏幕空间 UV 梯度和当前贴图尺寸选择层级。 | `--filter nearest`、`bilinear`、`mipmap`、`trilinear` |
 | 阴影与环境遮蔽 | 方向光阴影由光源视角的深度图生成。SSAO 和多方向采样 AO 均作用于首帧，可导出可见度图。 | `--mode lit` 对比 `--mode shadow`，后者可加 `--ao ssao` 或 `--ao brute` |
 | 卡通与描边 | 三档光照生成色带，Sobel 算子从深度变化中提取轮廓。可以使用同一机位单独比较描边效果。 | `--mode toon --post none` 对比 `--mode toon` |
 
@@ -128,6 +129,35 @@ Flat 每个三角形共用一个面法线，鼻梁和下颌的分面尤其明显
 [![从多个方向可见的环境光比例](docs/screenshots/brute-map.png)](docs/screenshots/brute-map.png?raw=true)
 
 SSAO 只利用相机当前可见的几何，多方向 AO 还会计入镜头外落在采样视锥内的遮挡物。两种方法均使用有限样本。预设适用于静态场景，方向光和多方向 AO 的正交采样范围针对原点附近的模型设置。
+
+### 纹理过滤
+
+用 Diablo 的棋盘地面观察过滤效果。放大原图看前景格子的边缘，再看远处密集的格子。下面三张图和上方的「漫反射贴图」采用相同的相机、材质和分辨率，只改变采样方式。
+
+| `--filter` | 采样方式 |
+| --- | --- |
+| `nearest`（默认） | 在原始贴图中取一个纹素。 |
+| `bilinear` | 在原始贴图中按距离混合四个相邻纹素，支持跨平铺接缝插值。 |
+| `mipmap` | 选最接近目标 LOD 的一层，在该层内做双线性过滤。 |
+| `trilinear` | 分别对相邻两层做双线性过滤，再按小数 LOD 混合，使层级切换连续。 |
+
+缩小时，光栅器从裁剪后的三角形计算透视校正的 UV 梯度，用两个屏幕方向中较大的纹素覆盖长度选择 LOD。每张贴图使用自己的尺寸。首次需要低分辨率层时，程序按面积加权生成 mip 链，直至 1 × 1；奇数宽高的边缘纹素也参与平均。放大时，两种 mipmap 模式都使用第 0 层。过滤沿用现有贴图的通道数值，法线在着色时重新归一化。
+
+```powershell
+& $exe --scene diablo --mode albedo --filter trilinear --size 2160x1560 --output trilinear.tga
+```
+
+**双线性 · 原始贴图**
+
+[![棋盘地面使用双线性过滤](docs/screenshots/albedo-bilinear.png)](docs/screenshots/albedo-bilinear.png?raw=true)
+
+**Mipmap · 最近层级**
+
+[![棋盘地面在最近 mip 层内做双线性过滤](docs/screenshots/albedo-mipmap.png)](docs/screenshots/albedo-mipmap.png?raw=true)
+
+**三线性 · 相邻层级混合**
+
+[![棋盘地面使用三线性过滤](docs/screenshots/albedo-trilinear.png)](docs/screenshots/albedo-trilinear.png?raw=true)
 
 ### 卡通与后处理
 

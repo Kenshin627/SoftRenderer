@@ -1,4 +1,5 @@
 """Image regressions for the public CLI. Build Release x64 and install Pillow first."""
+import math
 from pathlib import Path
 import subprocess
 import tempfile
@@ -55,7 +56,6 @@ class RenderTests(unittest.TestCase):
     def test_near_plane_clipping(self):
         # Build a triangle in the custom-model camera frame. One corner is
         # behind the eye; clipping at distance 0.1 yields the reference quad.
-        import math
         eye = (0.55, 0.15, 2.9)
         def unit(v):
             return tuple(x / math.sqrt(sum(y*y for y in v)) for x in v)
@@ -94,6 +94,74 @@ class RenderTests(unittest.TestCase):
         forward, reverse = render(*models), render(*reversed(models))
         self.assertEqual(forward.tobytes(), reverse.tobytes())
         self.assertEqual(forward.getpixel((80, 63)), (210, 210, 210))
+
+    def filter_triangle(self, uv_at):
+        # Prescribe screen offsets and reciprocal clip w. The rasterizer must clip
+        # this triangle and reconstruct the same rational UV field in every piece.
+        eye = (0.55, 0.15, 2.9)
+        back = tuple(v / math.sqrt(sum(c*c for c in eye)) for v in eye)
+        norm = math.hypot(back[0], back[2])
+        right = (back[2]/norm, 0, -back[0]/norm)
+        up = (back[1]*right[2], back[2]*right[0]-back[0]*right[2], -back[1]*right[0])
+        rows = []
+        for x, y in ((-180, -115), (170, -115), (0, 115)):
+            q = 0.8 + 0.0019*x + 0.00227*y
+            scale = 2 * math.tan(math.radians(22.5)) / 127
+            world = [eye[i] + (scale*(right[i]*x + up[i]*y) - back[i])/q for i in range(3)]
+            u, v = uv_at(x, y, q)
+            rows.extend(["v " + " ".join(map(str, world)), f"vt {u} {1-v}"])
+        (self.folder / "plane.obj").write_text("\n".join(rows + ["f 1/1 2/2 3/3"]))
+
+    def sample_filter(self, name, raster="bbox"):
+        return self.frame("--model", "plane.obj", "--mode", "albedo", "--filter", name,
+                          "--raster", raster, cwd=self.folder)
+
+    def test_bilinear_centers_and_repeat_seams(self):
+        image = Image.new("RGB", (2, 2))
+        image.putdata([(240, 0, 0), (0, 240, 0), (0, 0, 240), (240, 240, 240)])
+        image.save(self.folder / "plane_diffuse.tga")
+        for uv, expected in (((0.25, 0.25), (240, 0, 0)),
+                             ((0.375, 0.625), (90, 60, 180)),
+                             ((-1.0, 2.0), (120, 120, 120))):
+            self.filter_triangle(lambda x, y, q: uv)
+            for mode in ("bilinear", "mipmap", "trilinear"):
+                actual = self.sample_filter(mode).getpixel((80, 63))
+                self.assertTrue(all(abs(a-b) <= 1 for a,b in zip(actual, expected)), (uv, mode, actual))
+
+    def test_mips_include_odd_edges_and_stop_at_one(self):
+        for width, height in ((5, 3), (1, 7), (7, 1), (1, 1)):
+            image = Image.new("RGB", (width, height))
+            image.putdata([(240*(x == width-1), 240*(y == height-1), 50)
+                           for y in range(height) for x in range(width)])
+            image.save(self.folder / "plane_diffuse.tga")
+            self.filter_triangle(lambda x, y, q: (10*x/q, 10*y/q))
+            expected = (240/width, 240/height, 50)
+            for mode in ("mipmap", "trilinear"):
+                actual = self.sample_filter(mode).getpixel((80, 63))
+                self.assertTrue(all(abs(a-b) <= 1 for a,b in zip(actual, expected)), (image.size, actual))
+
+    def test_filtered_opposing_normals_fall_back_to_surface(self):
+        normals = Image.new("RGB", (2, 1))
+        normals.putdata([(255, 128, 128), (0, 127, 127)])
+        normals.save(self.folder / "plane_nm.tga")
+        self.filter_triangle(lambda x, y, q: (0.5, 0.5))
+        args = ("--model", "plane.obj", "--mode", "normal", "--filter", "bilinear")
+        mapped = self.frame(*args, "--normals", "object", cwd=self.folder)
+        geometric = self.frame(*args, "--normals", "vertex", cwd=self.folder)
+        self.assertEqual(mapped.getpixel((80, 63)), geometric.getpixel((80, 63)))
+
+    def test_fractional_lod_after_perspective_clipping(self):
+        # At the center, the larger footprint lies along screen Y. LOD = 1.25.
+        # The 8x1 texture gives distinct bilinear samples at levels 0, 1 and 2.
+        image = Image.new("L", (8, 1))
+        image.putdata([0, 0, 0, 240, 0, 0, 0, 0])
+        image.save(self.folder / "plane_diffuse.tga")
+        rate = 0.8 * 2**1.25 / 8
+        self.filter_triangle(lambda x, y, q: (0.4375 + rate*y/q, 0.5))
+        for mode, expected in (("bilinear", 240), ("mipmap", 90), ("trilinear", 76.875)):
+            frame = self.sample_filter(mode)
+            self.assertAlmostEqual(frame.getpixel((80, 63))[0], expected, delta=1.1)
+            self.assertEqual(frame.tobytes(), self.sample_filter(mode, "scanline").tobytes())
 
     def test_occlusion_on_first_frame(self):
         lit = self.frame("--mode", "lit")

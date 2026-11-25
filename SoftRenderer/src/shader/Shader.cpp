@@ -29,14 +29,7 @@ glm::vec3 Shader::Sampler2D(const glm::vec2& uv, const std::shared_ptr<Texture>&
 	{
 		return { 1.0f, 1.0f, 1.0f }; // unbound sampler slot falls back to white
 	}
-	// Clamp the exact upper edge and repeat UVs outside the unit tile.
-	auto texel = [](float u, int size) {
-		float wrapped = u == 1.0f ? 1.0f : u - glm::floor(u);
-		return static_cast<uint32_t>(glm::min(wrapped * size, float(size - 1)));
-	};
-	if (texture->GetWidth() <= 0 || texture->GetHeight() <= 0) return glm::vec3(0);
-	glm::vec4 color = texture->Get(texel(uv.x, texture->GetWidth()), texel(uv.y, texture->GetHeight()));
-	return glm::vec3(color) / 255.0f;
+	return texture->Sample(uv, textureFilter, uvDx, uvDy);
 }
 
 glm::vec3 Shader::SurfaceNormal(const glm::vec2& uv)
@@ -49,12 +42,15 @@ glm::vec3 Shader::SurfaceNormal(const glm::vec2& uv)
 	{
 		if (!objectNormalTexture) return n;
 		glm::vec3 local = 2.0f * Sampler2D(uv, objectNormalTexture) - 1.0f;
-		return glm::normalize(itModel * local);
+		glm::vec3 mapped = itModel * local;
+		return glm::dot(mapped, mapped) > 1e-8f ? glm::normalize(mapped) : n;
 	}
 	if (!tbnNormalTexture) return n;
 	glm::vec3 t = w.x * v[0].tangent + w.y * v[1].tangent + w.z * v[2].tangent;
 	glm::vec3 b = w.x * v[0].bitangent + w.y * v[1].bitangent + w.z * v[2].bitangent;
 	if (glm::dot(t, t) < 1e-12f || glm::dot(b, b) < 1e-12f) return n;
 	glm::vec3 local = 2.0f * Sampler2D(uv, tbnNormalTexture) - 1.0f;
-	return glm::normalize(glm::mat3(glm::normalize(t), glm::normalize(b), n) * local);
+	glm::vec3 mapped = glm::mat3(glm::normalize(t), glm::normalize(b), n) * local;
+	// Opposing normals can cancel when neighboring texels are filtered.
+	return glm::dot(mapped, mapped) > 1e-8f ? glm::normalize(mapped) : n;
 }

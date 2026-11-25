@@ -129,6 +129,8 @@ void Renderer::DefaultPass()
 {
 	activeShader = shaderLibs.at(surface);
 	activeShader->normalSource = normalSource;
+	activeShader->textureFilter = textureFilter;
+	const bool needsGradients = textureFilter == TextureFilter::Mipmap || textureFilter == TextureFilter::Trilinear;
 	activeShader->light = activeScene->GetLight();
 	activeShader->pointLights = activeScene->GetPointLights();
 	activeShader->model = glm::identity<glm::mat4>();
@@ -189,7 +191,7 @@ void Renderer::DefaultPass()
 					VertexAttribute vertex{ localPosition[k], normals[k], uvs[k], tangent, bitangent };
 					activeShader->Vertex(clipCoords[k], vertex, (uint32_t)k);
 				}
-				Rasterize(clipCoords, defaultPassFrameBuffer);
+				Rasterize(clipCoords, defaultPassFrameBuffer, needsGradients ? uvs : nullptr);
 			}
 		}
 	}
@@ -529,7 +531,7 @@ void Renderer::Clear()
 	postProcessBuffer->Reset();
 }
 
-void Renderer::Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>& target)
+void Renderer::Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>& target, const glm::vec2* uvs)
 {
 	// Clip before perspective division. Carry weights in the original triangle
 	// so every shader keeps using its own three vertex outputs after clipping.
@@ -566,11 +568,11 @@ void Renderer::Rasterize(const glm::vec4* vertices, std::shared_ptr<FrameBuffer>
 	{
 		glm::vec4 clip[] = { polygon[0].clip, polygon[i].clip, polygon[i+1].clip };
 		glm::mat3 weights(polygon[0].weights, polygon[i].weights, polygon[i+1].weights);
-		RasterizeTriangle(clip, weights, target);
+		RasterizeTriangle(clip, weights, target, uvs);
 	}
 }
 
-void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& currentBuffer)
+void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sourceWeights, std::shared_ptr<FrameBuffer>& currentBuffer, const glm::vec2* uvs)
 {
 	//the viewport transform is derived from the target buffer, since the shadow buffer
 	//runs at a higher resolution than the camera framebuffer
@@ -585,6 +587,23 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 	float signedArea2 = (afterClippedCoords[1].x - afterClippedCoords[0].x) * (afterClippedCoords[2].y - afterClippedCoords[0].y)
 	                  - (afterClippedCoords[2].x - afterClippedCoords[0].x) * (afterClippedCoords[1].y - afterClippedCoords[0].y);
 	if (signedArea2 < 1.0f) return;
+
+	// H = (u/w, v/w, 1/w) varies linearly over the clipped screen triangle.
+	glm::vec3 hDx(0.0f), hDy(0.0f);
+	if (uvs)
+	{
+		glm::vec3 h[3];
+		for (int i = 0; i < 3; ++i)
+		{
+			const auto& s = sourceWeights[i];
+			const glm::vec2 uv = s.x * uvs[0] + s.y * uvs[1] + s.z * uvs[2];
+			h[i] = glm::vec3(uv, 1.0f) / vertices[i].w;
+		}
+		const glm::vec2 e1(afterClippedCoords[1] - afterClippedCoords[0]);
+		const glm::vec2 e2(afterClippedCoords[2] - afterClippedCoords[0]);
+		hDx = ((h[1] - h[0]) * e2.y - (h[2] - h[0]) * e1.y) / signedArea2;
+		hDy = ((h[2] - h[0]) * e1.x - (h[1] - h[0]) * e2.x) / signedArea2;
+	}
 
 	BoundingBox bbox = GetBoundingBox(afterClippedCoords, currentBuffer->width, currentBuffer->height);
 	for (uint32_t y = (uint32_t)bbox.min.y; y <= (uint32_t)bbox.max.y; y++)
@@ -627,9 +646,17 @@ void Renderer::RasterizeTriangle(const glm::vec4* vertices, const glm::mat3& sou
 				//tutorial our_gl rasterize: perspective-correct barycentric for varying
 				//interpolation divides by the clip-space w (not z)
 				glm::vec3 bc_clip = { bc_screen.x / beforeClippedCoords[0].w, bc_screen.y / beforeClippedCoords[1].w, bc_screen.z / beforeClippedCoords[2].w };
-				bc_clip /= (bc_clip.x + bc_clip.y + bc_clip.z);
+				const float reciprocalW = bc_clip.x + bc_clip.y + bc_clip.z;
+				bc_clip /= reciprocalW;
 				bc_clip = sourceWeights * bc_clip;
 				activeShader->baryCentric = bc_clip;
+				if (uvs)
+				{
+					// Quotient rule for uv = H.xy / H.z, before repeating the texture.
+					const glm::vec2 uv = bc_clip.x * uvs[0] + bc_clip.y * uvs[1] + bc_clip.z * uvs[2];
+					activeShader->uvDx = (glm::vec2(hDx) - uv * hDx.z) / reciprocalW;
+					activeShader->uvDy = (glm::vec2(hDy) - uv * hDy.z) / reciprocalW;
+				}
 				//per-pixel ambient occlusion multiplier (full-res buffer only)
 				activeShader->aoFactor = (!aoBuffer.empty() && currentBuffer->width == viewport.width && currentBuffer->height == viewport.height) ? aoBuffer[pixelIndex] : 1.0f;
 				glm::vec4 gl_FragColor;

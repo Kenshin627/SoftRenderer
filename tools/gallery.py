@@ -34,6 +34,8 @@ def main():
         render(directory, "helmet", "helmet", "pbr")
         for mode in ("albedo", "emission", "lit", "shadow", "depth", "toon"):
             render(directory, mode, "diablo", mode)
+        for filtering in ("bilinear", "mipmap", "trilinear"):
+            render(directory, "albedo-" + filtering, "diablo", "albedo", "--filter", filtering)
         render(directory, "bands", "diablo", "toon", "--post", "none")
         render(directory, "mosaic", "diablo", "shadow", "--post", "mosaic")
         for ao in ("ssao", "brute"):

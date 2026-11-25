@@ -13,6 +13,10 @@ const std::map<std::string, ShaderType> modes = {
 const std::map<std::string, ShaderType> effects = {
 	{"none", deActive}, {"outline", ToonEdge}, {"gray", GrayScale}, {"rgb", RGBSpliter}, {"mosaic", MosaicArt}
 };
+const std::map<std::string, TextureFilter> filters = {
+	{"nearest", TextureFilter::Nearest}, {"bilinear", TextureFilter::Bilinear},
+	{"mipmap", TextureFilter::Mipmap}, {"trilinear", TextureFilter::Trilinear}
+};
 const std::map<std::string, NormalSource> normals = {
 	{"auto", NormalSource::Auto}, {"vertex", NormalSource::Vertex}, {"object", NormalSource::Object}, {"tangent", NormalSource::Tangent}
 };
@@ -32,6 +36,7 @@ void usage()
 {
 	std::cout << "SoftRenderer [--scene diablo|head|helmet | --model file.obj ...] [--size WIDTHxHEIGHT] [--output frame.tga]\n"
 		"  --mode albedo|emission|lit|wire|barycentric|flat|gouraud|smooth|phong|blinn|normal|shadow|toon|depth|pbr\n"
+		"  --filter nearest|bilinear|mipmap|trilinear   (default: nearest)\n"
 		"  --normals auto|vertex|object|tangent   --raster bbox|scanline\n"
 		"  --ao off|ssao|brute (phong/shadow)     --ao-map visibility.tga\n"
 		"  --post none|outline|gray|rgb|mosaic   (toon defaults to outline)\n";
@@ -45,6 +50,7 @@ int main(int argc, char* argv[])
 		std::string sceneName, output, aoOutput;
 		std::vector<std::string> models;
 		ShaderType mode = Toon, post = deActive;
+		TextureFilter filter = TextureFilter::Nearest;
 		NormalSource normal = NormalSource::Auto;
 		auto ao = Renderer::AoMode::Off;
 		bool explicitPost = false, scanline = false;
@@ -59,6 +65,7 @@ int main(int argc, char* argv[])
 			else if (key == "--model") models.push_back(value);
 			else if (key == "--mode") mode = choice(modes, value);
 			else if (key == "--post") { post = choice(effects, value); explicitPost = true; }
+			else if (key == "--filter") filter = choice(filters, value);
 			else if (key == "--normals") normal = choice(normals, value);
 			else if (key == "--ao") ao = choice(occlusion, value);
 			else if (key == "--ao-map") aoOutput = value;
@@ -120,6 +127,7 @@ int main(int argc, char* argv[])
 		renderer.SetAoMode(ao);
 		renderer.SetScanline(scanline);
 		renderer.SetNormalSource(normal);
+		renderer.SetTextureFilter(filter);
 		renderer.Draw();
 		if (!aoOutput.empty() && !renderer.SaveAo(aoOutput.c_str())) return 1;
 		if (!output.empty()) return renderer.Image().write_tga_file(output.c_str()) ? 0 : 1;
